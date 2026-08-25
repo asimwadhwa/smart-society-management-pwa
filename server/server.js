@@ -1,3 +1,6 @@
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '1.1.1.1']);
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -32,9 +35,21 @@ connectDB();
 
 // Middleware
 app.use(helmet()); // Security headers
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://smart-society-management-pwa.vercel.app',
+  'https://smart-society-management-iqujwnk9n-asim-wadhwa.vercel.app'
+];
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
-  credentials: true, // Allow cookies
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
 }));
 app.use(morgan('dev')); // Logging
 app.use(express.json({ limit: '10mb' })); // Parse JSON bodies
