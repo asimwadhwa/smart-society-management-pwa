@@ -1,0 +1,17 @@
+# Code Owners
+# These users will be automatically requested for review on PRs
+
+# Global owners
+* @AAYUSH412
+
+# Frontend
+/client/ @AAYUSH412
+
+# Backend
+/server/ @AAYUSH412
+
+# Documentation
+*.md @AAYUSH412
+
+# CI/CD
+/.github/ @AAYUSH412

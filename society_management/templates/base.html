@@ -1,0 +1,46 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Society Management System</title>
+    <link rel="stylesheet" href="{% static '/style.css' %}">
+</head>
+<body>
+
+<header>
+    <h2>Society Management</h2>
+
+    {% if user.is_authenticated %}
+    <nav>
+        {% if user.role == 'ADMIN' %}
+            <a href="{% url 'admin_dashboard' %}">Dashboard</a>
+            <a href="{% url 'create_owner' %}">Add Owner</a>
+            <a href="{% url 'create_society' %}">Add Society</a>
+            <a href="{% url 'create_flat' %}">Add Flat</a>
+            <a href="{% url 'create_bill' %}">Add Bill</a>
+        {% elif user.role == 'OWNER' %}
+            <a href="{% url 'owner_dashboard' %}">My Dashboard</a>
+        {% elif user.role == 'TENANT' %}
+            <a href="{% url 'tenant_dashboard' %}">My Dashboard</a>
+        {% endif %}
+
+        <a href="{% url 'logout' %}" style="float:right;">Logout</a>
+    </nav>
+    {% endif %}
+</header>
+
+<div class="container">
+
+    <!-- MESSAGE BOX -->
+    {% for message in messages %}
+        <div class="message-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+
+    {% block content %}{% endblock %}
+
+</div>
+
+</body>
+</html>

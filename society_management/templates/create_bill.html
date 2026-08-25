@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h3>Create Maintenance Bill</h3>
+
+<form method="post">
+    {% csrf_token %}
+
+    <label>Select Flat</label>
+    <select name="flat" required>
+        <option value="">-- Select --</option>
+        {% for flat in flats %}
+            <option value="{{ flat.id }}">
+                {{ flat.society.name }} - {{ flat.flat_number }}
+            </option>
+        {% endfor %}
+    </select>
+
+    <label>Month</label>
+    <select name="month" required>
+        <option value="">-- Select Month --</option>
+        <option>January</option>
+        <option>February</option>
+        <option>March</option>
+        <option>April</option>
+        <option>May</option>
+        <option>June</option>
+        <option>July</option>
+        <option>August</option>
+        <option>September</option>
+        <option>October</option>
+        <option>November</option>
+        <option>December</option>
+    </select>
+
+    <label>Year</label>
+    <input type="number" name="year" min="2024" max="2100" required>
+
+    <label>Amount</label>
+    <input type="number" step="0.01" name="amount" required>
+
+    <label>Status</label>
+    <select name="status">
+        <option value="UNPAID">Unpaid</option>
+        <option value="PAID">Paid</option>
+    </select>
+
+    <label>Due Date</label>
+    <input type="date" name="due_date" required>
+
+    <button type="submit">Generate Bill</button>
+</form>
+
+{% endblock %}

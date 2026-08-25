@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h3>Tenant Dashboard</h3>
+
+<h4>My Flat Info</h4>
+{% if flat %}
+    <p><strong>Society:</strong> {{ flat.society.name }}</p>
+    <p><strong>Address:</strong> {{ flat.society.address }}</p>
+    <p><strong>Flat Number:</strong> {{ flat.flat_number }}</p>
+{% else %}
+    <p>No flat assigned yet.</p>
+{% endif %}
+
+<h4>Maintenance Bills</h4>
+
+<table>
+    <tr>
+        <th>Month/Year</th>
+        <th>Amount</th>
+        <th>Status</th>
+        <th>Due Date</th>
+    </tr>
+
+    {% for b in bills %}
+    <tr>
+        <td>{{ b.month }} {{ b.year }}</td>
+        <td>₹{{ b.amount|floatformat:2 }}</td>
+        <td>
+            {% if b.status == "PAID" %}
+                <span style="color:green;">Paid</span>
+            {% else %}
+                <span style="color:red;">Unpaid</span>
+            {% endif %}
+        </td>
+        <td>{{ b.due_date|date:"d M Y" }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="4">No bills found.</td></tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

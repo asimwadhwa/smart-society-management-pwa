@@ -1,0 +1,27 @@
+# Dependencies
+node_modules
+npm-debug.log
+
+# Environment files (use Docker secrets or env vars instead)
+.env
+.env.local
+.env.*.local
+
+# Development files
+*.md
+.git
+.gitignore
+.vscode
+.idea
+
+# Test files
+coverage
+*.test.js
+*.spec.js
+__tests__
+
+# Misc
+.DS_Store
+*.log
+cookies.txt
+manager-cookies.txt

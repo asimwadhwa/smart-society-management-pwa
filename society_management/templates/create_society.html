@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h3>Create Society</h3>
+
+<form method="post">
+    {% csrf_token %}
+
+    <label>Society Name</label>
+    <input type="text" name="name" maxlength="150" required>
+
+    <label>Address</label>
+    <textarea name="address" rows="3" required></textarea>
+
+    <button type="submit">Save Society</button>
+</form>
+
+{% endblock %}
