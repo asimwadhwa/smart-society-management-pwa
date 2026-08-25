@@ -35,21 +35,13 @@ connectDB();
 
 // Middleware
 app.use(helmet()); // Security headers
-const allowedOrigins = [
-  'http://localhost:3000',
-  'https://smart-society-management-pwa.vercel.app',
-  'https://smart-society-management-iqujwnk9n-asim-wadhwa.vercel.app'
-];
-
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
+  origin: [
+    'http://localhost:3000',
+    'https://smart-society-management-pwa.vercel.app',
+    'https://smart-society-management-iqujwnk9n-asim-wadhwa.vercel.app'
+  ],
+  credentials: true
 }));
 app.use(morgan('dev')); // Logging
 app.use(express.json({ limit: '10mb' })); // Parse JSON bodies
