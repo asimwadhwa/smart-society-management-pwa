@@ -511,7 +511,7 @@ RAZORPAY_KEY_SECRET=xxxxx
 
 # Brevo
 BREVO_API_KEY=xkeysib-xxxxx
-BREVO_SENDER_EMAIL=noreply@rajarshidarshan.com
+BREVO_SENDER_EMAIL=asimwadhwa19@gmail.com
 BREVO_SENDER_NAME=Asim Wadhwa Society
 
 # ImageKit

@@ -9,9 +9,15 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "seed": "node scripts/seedData.js",
     "seed:clear": "node scripts/seedData.js --clear",
-    "seed:reset": "node scripts/seedData.js --reset"
+    "seed:reset": "node scripts/seedData.js --reset",
+    "reset:db": "node scripts/resetDatabase.js"
   },
-  "keywords": ["society", "management", "express", "mongodb"],
+  "keywords": [
+    "society",
+    "management",
+    "express",
+    "mongodb"
+  ],
   "author": "Aayush Vaghela",
   "license": "ISC",
   "type": "commonjs",
