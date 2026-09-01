@@ -1,4 +1,4 @@
-# UI/UX Design Specification: Rajarshi Darshan Society Management
+# UI/UX Design Specification: Asim Wadhwa Society Management
 
 A comprehensive design guide for building a clean, modern, and fully responsive society management application.
 

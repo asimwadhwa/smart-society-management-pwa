@@ -2,7 +2,7 @@
   <img src="https://ik.imagekit.io/xh3awoalr/Portfolio/Manager_Thumbnail.png" alt="Society Management System" width="600" />
 </p>
 
-<h1 align="center">🏢 Rajarshi Darshan Society Management System</h1>
+<h1 align="center">🏢 Asim Wadhwa Society Management System</h1>
 
 <p align="center">
   <strong>A comprehensive full-stack society management web application</strong>
@@ -33,7 +33,7 @@
 
 ## 📖 Overview
 
-A complete society management solution for **Rajarshi Darshan** housing society (~40 flats). Built with modern technologies, this system streamlines daily operations including:
+A complete society management solution for **Asim Wadhwa** housing society (~40 flats). Built with modern technologies, this system streamlines daily operations including:
 
 - 💳 **Maintenance Collection** - ₹1000/month with Razorpay UPI/Card payments
 - 🚨 **Lift Emergency Alerts** - One-click emergency notification to all residents
@@ -186,7 +186,7 @@ Society_Management/
    RAZORPAY_KEY_SECRET=xxxx
    BREVO_API_KEY=xkeysib-xxxx
    BREVO_SENDER_EMAIL=noreply@domain.com
-   BREVO_SENDER_NAME=Rajarshi Darshan Society
+   BREVO_SENDER_NAME=Asim Wadhwa Society
    IMAGEKIT_PUBLIC_KEY=public_xxxx
    IMAGEKIT_PRIVATE_KEY=private_xxxx
    IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/xxxx

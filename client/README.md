@@ -1,6 +1,6 @@
 # 🖥️ Society Management - Frontend
 
-The Next.js 14 frontend for Rajarshi Darshan Society Management System.
+The Next.js 14 frontend for Asim Wadhwa Society Management System.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js" alt="Next.js" />

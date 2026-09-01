@@ -1,4 +1,4 @@
-# Plan: Rajarshi Darshan Society Management System
+# Plan: Asim Wadhwa Society Management System
 
 A complete society management web app with **Next.js 14 + Express.js + MongoDB**, featuring Razorpay payments (₹1000/month + ₹100 late fee), Brevo email alerts, OTP password reset, ImageKit uploads, and watchman portal. Fully responsive for mobile & desktop.
 
@@ -204,7 +204,7 @@ A complete society management web app with **Next.js 14 + Express.js + MongoDB**
 1. Resident/Watchman clicks big red "EMERGENCY" button
 2. Create `LiftEmergency` record with status=active
 3. Brevo sends email to ALL users:
-   - Subject: "🚨 LIFT EMERGENCY - Rajarshi Darshan"
+   - Subject: "🚨 LIFT EMERGENCY - Asim Wadhwa"
    - Body: Flat number, timestamp, "Someone is stuck in the lift!"
 
 #### Active Emergency Display
@@ -512,7 +512,7 @@ RAZORPAY_KEY_SECRET=xxxxx
 # Brevo
 BREVO_API_KEY=xkeysib-xxxxx
 BREVO_SENDER_EMAIL=noreply@rajarshidarshan.com
-BREVO_SENDER_NAME=Rajarshi Darshan Society
+BREVO_SENDER_NAME=Asim Wadhwa Society
 
 # ImageKit
 IMAGEKIT_PUBLIC_KEY=public_xxxxx
@@ -532,7 +532,7 @@ NODE_ENV=development
 ## Email Templates (Brevo)
 
 ### 1. Maintenance Invoice (Day 1)
-- Subject: "🏠 Maintenance Due - January 2026 | Rajarshi Darshan"
+- Subject: "🏠 Maintenance Due - January 2026 | Asim Wadhwa"
 - Body: Flat number, amount (₹1000), due date, payment link
 
 ### 2. Reminder (Day 10)
@@ -548,7 +548,7 @@ NODE_ENV=development
 - Body: Amount paid, transaction ID, month, receipt
 
 ### 5. Lift Emergency Alert
-- Subject: "🚨 LIFT EMERGENCY - Rajarshi Darshan"
+- Subject: "🚨 LIFT EMERGENCY - Asim Wadhwa"
 - Body: Flat number of person stuck, timestamp, urgent help needed
 
 ### 6. Emergency Resolved

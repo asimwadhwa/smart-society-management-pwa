@@ -2,7 +2,7 @@
 
 ## 🔒 Reporting a Vulnerability
 
-We take the security of Rajarshi Darshan Society Management seriously. If you believe you have found a security vulnerability, please report it to us as described below.
+We take the security of Asim Wadhwa Society Management seriously. If you believe you have found a security vulnerability, please report it to us as described below.
 
 ### ⚠️ Please Do NOT
 
@@ -145,4 +145,4 @@ We thank the following for responsibly disclosing vulnerabilities:
 
 ---
 
-Thank you for helping keep Rajarshi Darshan Society Management and its users safe!
+Thank you for helping keep Asim Wadhwa Society Management and its users safe!

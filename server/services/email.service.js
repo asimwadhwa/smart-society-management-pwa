@@ -72,7 +72,7 @@ exports.sendPaymentConfirmation = async (data) => {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0; text-align: center;">Rajarshi Darshan Society</h1>
+            <h1 style="color: white; margin: 0; text-align: center;">Asim Wadhwa Society</h1>
             <p style="color: rgba(255,255,255,0.9); text-align: center; margin: 10px 0 0 0;">Payment Confirmation</p>
           </div>
           
@@ -121,7 +121,7 @@ exports.sendPaymentConfirmation = async (data) => {
             <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
             
             <p style="color: #999; font-size: 12px; text-align: center; margin-bottom: 0;">
-              This is an automated email from Rajarshi Darshan Society Management System.<br>
+              This is an automated email from Asim Wadhwa Society Management System.<br>
               Please do not reply to this email.
             </p>
           </div>
@@ -129,7 +129,7 @@ exports.sendPaymentConfirmation = async (data) => {
         </html>
       `,
       textContent: `
-        Payment Confirmation - Rajarshi Darshan Society
+        Payment Confirmation - Asim Wadhwa Society
         
         Dear ${name},
         
@@ -145,7 +145,7 @@ exports.sendPaymentConfirmation = async (data) => {
         Please save this email for your records.
         
         Thank you,
-        Rajarshi Darshan Society
+        Asim Wadhwa Society
       `,
       sender: brevoClient.defaultSender
     };
@@ -194,7 +194,7 @@ exports.sendMaintenanceReminder = async (data) => {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: ${urgencyColor}; padding: 30px; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0; text-align: center;">Rajarshi Darshan Society</h1>
+            <h1 style="color: white; margin: 0; text-align: center;">Asim Wadhwa Society</h1>
             <p style="color: rgba(255,255,255,0.9); text-align: center; margin: 10px 0 0 0;">${urgencyText}: Maintenance Payment</p>
           </div>
           
@@ -227,14 +227,14 @@ exports.sendMaintenanceReminder = async (data) => {
             <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
             
             <p style="color: #999; font-size: 12px; text-align: center;">
-              Rajarshi Darshan Society Management System
+              Asim Wadhwa Society Management System
             </p>
           </div>
         </body>
         </html>
       `,
       textContent: `
-        ${urgencyText}: Maintenance Payment - Rajarshi Darshan Society
+        ${urgencyText}: Maintenance Payment - Asim Wadhwa Society
         
         Dear ${name},
         
@@ -249,7 +249,7 @@ exports.sendMaintenanceReminder = async (data) => {
         Please log in to make your payment.
         
         Thank you,
-        Rajarshi Darshan Society
+        Asim Wadhwa Society
       `,
       sender: brevoClient.defaultSender
     };
@@ -277,7 +277,7 @@ exports.sendMaintenanceInvoice = async (data) => {
 
     const sendSmtpEmail = {
       to: [{ email, name }],
-      subject: `Maintenance Invoice - ${monthName} ${year} | Rajarshi Darshan Society`,
+      subject: `Maintenance Invoice - ${monthName} ${year} | Asim Wadhwa Society`,
       htmlContent: `
         <!DOCTYPE html>
         <html>
@@ -287,7 +287,7 @@ exports.sendMaintenanceInvoice = async (data) => {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%); padding: 30px; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0; text-align: center;">🏢 Rajarshi Darshan Society</h1>
+            <h1 style="color: white; margin: 0; text-align: center;">🏢 Asim Wadhwa Society</h1>
             <p style="color: rgba(255,255,255,0.9); text-align: center; margin: 10px 0 0 0;">Monthly Maintenance Invoice</p>
           </div>
           
@@ -337,7 +337,7 @@ exports.sendMaintenanceInvoice = async (data) => {
             <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
             
             <p style="color: #999; font-size: 12px; text-align: center;">
-              This is an automated email from Rajarshi Darshan Society Management System.<br>
+              This is an automated email from Asim Wadhwa Society Management System.<br>
               Please do not reply to this email.
             </p>
           </div>
@@ -346,7 +346,7 @@ exports.sendMaintenanceInvoice = async (data) => {
       `,
       textContent: `
         Maintenance Invoice - ${monthName} ${year}
-        Rajarshi Darshan Society
+        Asim Wadhwa Society
         
         Dear ${name},
         
@@ -363,7 +363,7 @@ exports.sendMaintenanceInvoice = async (data) => {
         Please log in to make your payment.
         
         Thank you,
-        Rajarshi Darshan Society
+        Asim Wadhwa Society
       `,
       sender: brevoClient.defaultSender
     };
@@ -451,7 +451,7 @@ exports.sendFinalWarning = async (data) => {
             <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
             
             <p style="color: #999; font-size: 12px; text-align: center;">
-              Rajarshi Darshan Society Management System
+              Asim Wadhwa Society Management System
             </p>
           </div>
         </body>
@@ -459,7 +459,7 @@ exports.sendFinalWarning = async (data) => {
       `,
       textContent: `
         ⚠️ FINAL WARNING: Maintenance Payment Due in 2 Days
-        Rajarshi Darshan Society
+        Asim Wadhwa Society
         
         Dear ${name},
         
@@ -476,7 +476,7 @@ exports.sendFinalWarning = async (data) => {
         Please make your payment immediately to avoid the late fee.
         
         Thank you,
-        Rajarshi Darshan Society
+        Asim Wadhwa Society
       `,
       sender: brevoClient.defaultSender
     };
@@ -517,7 +517,7 @@ exports.sendEmergencyAlert = async (data) => {
 
     const sendSmtpEmail = {
       to: [{ email, name }],
-      subject: '🚨 LIFT EMERGENCY ALERT - Rajarshi Darshan Society',
+      subject: '🚨 LIFT EMERGENCY ALERT - Asim Wadhwa Society',
       htmlContent: `
         <!DOCTYPE html>
         <html>
@@ -577,14 +577,14 @@ exports.sendEmergencyAlert = async (data) => {
             <hr style="border: none; border-top: 1px solid #fecaca; margin: 30px 0;">
             
             <p style="color: #999; font-size: 12px; text-align: center;">
-              This is an automated emergency alert from Rajarshi Darshan Society.
+              This is an automated emergency alert from Asim Wadhwa Society.
             </p>
           </div>
         </body>
         </html>
       `,
       textContent: `
-        🚨 LIFT EMERGENCY ALERT - Rajarshi Darshan Society
+        🚨 LIFT EMERGENCY ALERT - Asim Wadhwa Society
         
         SOMEONE IS STUCK IN THE LIFT!
         
@@ -600,7 +600,7 @@ exports.sendEmergencyAlert = async (data) => {
         If you are nearby, please check on the lift immediately.
         Contact building security or call for help if needed.
         
-        - Rajarshi Darshan Society
+        - Asim Wadhwa Society
       `,
       sender: brevoClient.defaultSender
     };
@@ -658,7 +658,7 @@ exports.sendEmergencyResolved = async (data) => {
 
     const sendSmtpEmail = {
       to: [{ email, name }],
-      subject: '✅ Lift Emergency Resolved - Rajarshi Darshan Society',
+      subject: '✅ Lift Emergency Resolved - Asim Wadhwas Society',
       htmlContent: `
         <!DOCTYPE html>
         <html>
@@ -714,14 +714,14 @@ exports.sendEmergencyResolved = async (data) => {
             <hr style="border: none; border-top: 1px solid #bbf7d0; margin: 30px 0;">
             
             <p style="color: #999; font-size: 12px; text-align: center;">
-              This is an automated notification from Rajarshi Darshan Society.
+              This is an automated notification from Asim Wadhwa Society.
             </p>
           </div>
         </body>
         </html>
       `,
       textContent: `
-        ✅ LIFT EMERGENCY RESOLVED - Rajarshi Darshan Society
+        ✅ LIFT EMERGENCY RESOLVED - Asim Wadhwa Society
         
         The lift emergency has been resolved!
         
@@ -736,7 +736,7 @@ exports.sendEmergencyResolved = async (data) => {
         
         Thank you for your attention and cooperation.
         
-        - Rajarshi Darshan Society
+        - Asim Wadhwa Society
       `,
       sender: brevoClient.defaultSender
     };
@@ -797,7 +797,7 @@ exports.sendComplaintStatusUpdate = async (data) => {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%); padding: 30px; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0; text-align: center;">Rajarshi Darshan Society</h1>
+            <h1 style="color: white; margin: 0; text-align: center;">Asim Wadhwa Society</h1>
             <p style="color: rgba(255,255,255,0.9); text-align: center; margin: 10px 0 0 0;">Complaint Status Update</p>
           </div>
           
@@ -879,14 +879,14 @@ exports.sendComplaintStatusUpdate = async (data) => {
             <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
             
             <p style="color: #999; font-size: 12px; text-align: center;">
-              This is an automated notification from Rajarshi Darshan Society.
+              This is an automated notification from Asim Wadhwa Society.
             </p>
           </div>
         </body>
         </html>
       `,
       textContent: `
-        Complaint Status Update - Rajarshi Darshan Society
+        Complaint Status Update - Asim Wadhwa Society
         
         Dear ${name},
         
@@ -905,7 +905,7 @@ exports.sendComplaintStatusUpdate = async (data) => {
           ? 'Your complaint has been resolved! Thank you for bringing this to our attention.' 
           : 'We will keep you updated on any further progress.'}
         
-        - Rajarshi Darshan Society
+        - Asim Wadhwa Society
       `,
       sender: brevoClient.defaultSender
     };
@@ -933,7 +933,7 @@ exports.sendPasswordResetOTP = async (data) => {
 
     const sendSmtpEmail = {
       to: [{ email, name }],
-      subject: 'Password Reset OTP - Rajarshi Darshan Society',
+      subject: 'Password Reset OTP - Asim Wadhwa Society',
       htmlContent: `
         <!DOCTYPE html>
         <html>
@@ -944,7 +944,7 @@ exports.sendPasswordResetOTP = async (data) => {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%); padding: 30px; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0; text-align: center;">🏢 Rajarshi Darshan Society</h1>
+            <h1 style="color: white; margin: 0; text-align: center;">🏢 Asim Wadhwa Society</h1>
             <p style="color: rgba(255,255,255,0.9); text-align: center; margin: 10px 0 0 0;">Password Reset Request</p>
           </div>
           
@@ -972,7 +972,7 @@ exports.sendPasswordResetOTP = async (data) => {
             <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
             
             <p style="color: #999; font-size: 12px; text-align: center; margin-bottom: 0;">
-              This is an automated email from Rajarshi Darshan Society Management System.<br>
+              This is an automated email from Asim Wadhwa Society Management System.<br>
               Please do not reply to this email.
             </p>
           </div>
@@ -980,7 +980,7 @@ exports.sendPasswordResetOTP = async (data) => {
         </html>
       `,
       textContent: `
-        Password Reset OTP - Rajarshi Darshan Society
+        Password Reset OTP - Asim Wadhwa Society
         
         Dear ${name},
         
@@ -992,7 +992,7 @@ exports.sendPasswordResetOTP = async (data) => {
         
         If you didn't request a password reset, please ignore this email.
         
-        - Rajarshi Darshan Society
+        - Asim Wadhwa Society
       `,
       sender: brevoClient.defaultSender
     };
@@ -1018,7 +1018,7 @@ exports.sendPasswordResetConfirmation = async (data) => {
 
     const sendSmtpEmail = {
       to: [{ email, name }],
-      subject: 'Password Changed Successfully - Rajarshi Darshan Society',
+      subject: 'Password Changed Successfully - Asim Wadhwa Society',
       htmlContent: `
         <!DOCTYPE html>
         <html>
@@ -1029,7 +1029,7 @@ exports.sendPasswordResetConfirmation = async (data) => {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%); padding: 30px; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0; text-align: center;">🏢 Rajarshi Darshan Society</h1>
+            <h1 style="color: white; margin: 0; text-align: center;">🏢 Asim Wadhwa Society</h1>
             <p style="color: rgba(255,255,255,0.9); text-align: center; margin: 10px 0 0 0;">Password Changed</p>
           </div>
           
@@ -1053,7 +1053,7 @@ exports.sendPasswordResetConfirmation = async (data) => {
             <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
             
             <p style="color: #999; font-size: 12px; text-align: center; margin-bottom: 0;">
-              This is an automated email from Rajarshi Darshan Society Management System.<br>
+              This is an automated email from Asim Wadhwa Society Management System.<br>
               Please do not reply to this email.
             </p>
           </div>
@@ -1061,7 +1061,7 @@ exports.sendPasswordResetConfirmation = async (data) => {
         </html>
       `,
       textContent: `
-        Password Changed Successfully - Rajarshi Darshan Society
+        Password Changed Successfully - Asim Wadhwa Society
         
         Dear ${name},
         
@@ -1069,7 +1069,7 @@ exports.sendPasswordResetConfirmation = async (data) => {
         
         If you did not make this change, please contact the society office immediately.
         
-        - Rajarshi Darshan Society
+        - Asim Wadhwa Society
       `,
       sender: brevoClient.defaultSender
     };

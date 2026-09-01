@@ -44,9 +44,9 @@ const DEFAULT_PASSWORD = 'password123';
 const usersData = [
   // Admin users
   {
-    name: 'Rajesh Sharma',
-    email: 'rajesh.sharma@example.com',
-    phone: '9876543210',
+    name: 'Asim Wadhwa',
+    email: 'asimwadhwa@gmail.com',
+    phone: '8668259536',
     flat_no: '102',
     role: 'admin',
     password_hash: DEFAULT_PASSWORD
@@ -692,7 +692,7 @@ async function seedDatabase() {
     console.log('   Email: [any seeded email]');
     console.log('   Password: password123');
     console.log('\n📧 Sample seeded users:');
-    console.log('   • Admin: rajesh.sharma@example.com');
+    console.log('   • Admin: asimwadhwa19@gmail.com');
     console.log('   • Resident: priya.patel@example.com');
     console.log('   • Watchman: ramesh.watchman@example.com');
     console.log('═══════════════════════════════════════════════════\n');

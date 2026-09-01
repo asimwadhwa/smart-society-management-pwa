@@ -46,14 +46,14 @@ export const generateReceiptPDF = (data: ReceiptData) => {
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
-  doc.text('RAJARSHI DARSHAN', pageWidth / 2, 20, { align: 'center' });
+  doc.text('Asim Wadhwa', pageWidth / 2, 20, { align: 'center' });
   
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
   doc.text('Society Management System', pageWidth / 2, 30, { align: 'center' });
   
   doc.setFontSize(9);
-  doc.text('Ahmedabad, Gujarat, India', pageWidth / 2, 38, { align: 'center' });
+  doc.text('Pune, Maharashtra, India', pageWidth / 2, 38, { align: 'center' });
 
   y = 60;
 
@@ -227,7 +227,7 @@ export const generateReceiptPDF = (data: ReceiptData) => {
   doc.text('This is a computer-generated receipt and does not require a signature.', pageWidth / 2, y, { align: 'center' });
   
   y += 6;
-  doc.text('For queries, contact: rajarshidarshan@gmail.com', pageWidth / 2, y, { align: 'center' });
+  doc.text('For queries, contact: asimwadhwa19@gmail.com', pageWidth / 2, y, { align: 'center' });
   
   y += 10;
   doc.setFontSize(7);

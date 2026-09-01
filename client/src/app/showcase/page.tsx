@@ -306,7 +306,7 @@ export default function ShowcasePage() {
             </div>
 
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white mb-4 tracking-tight">
-              Rajarshi Darshan
+              Asim Wadhwa
             </h1>
             <p className="text-xl sm:text-2xl text-indigo-200 font-medium mb-8">
               Society Management System

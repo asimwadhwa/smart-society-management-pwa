@@ -1,7 +1,7 @@
 {
   "name": "rajarshi-darshan-server",
   "version": "1.0.0",
-  "description": "Backend API for Rajarshi Darshan Society Management System",
+  "description": "Backend API for Asim Wadhwa Society Management System",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
