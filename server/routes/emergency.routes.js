@@ -1,6 +1,9 @@
 const express = require('express');
+
 const router = express.Router();
+
 const emergencyController = require('../controllers/emergency.controller');
+
 const { authenticate, authorize } = require('../middleware/auth.middleware');
 
 // All routes require authentication
@@ -13,9 +16,19 @@ router.post('/trigger', emergencyController.triggerEmergency);
 router.get('/active', emergencyController.getActiveEmergencies);
 
 // PUT /api/emergency/:id/resolve - Mark emergency resolved (Manager, Admin)
-router.put('/:id/resolve', authorize('manager', 'admin'), emergencyController.resolveEmergency);
+router.put(
+  '/:id/resolve',
+  authorize('manager', 'admin'),
+  emergencyController.resolveEmergency
+);
 
-// GET /api/emergency/history - Get emergency history (Manager, Admin)
-router.get('/history', authorize('manager', 'admin'), emergencyController.getEmergencyHistory);
+// GET /api/emergency/history
+// Resident: Own history
+// Watchman: Complete history
+// Manager/Admin: Complete history
+router.get(
+  '/history',
+  emergencyController.getEmergencyHistory
+);
 
 module.exports = router;

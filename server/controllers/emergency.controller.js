@@ -14,6 +14,7 @@ exports.triggerEmergency = async (req, res, next) => {
 
     // Check if there's already an active emergency
     const activeEmergency = await LiftEmergency.findOne({ status: 'active' });
+
     if (activeEmergency) {
       return res.status(400).json({
         success: false,
@@ -34,20 +35,26 @@ exports.triggerEmergency = async (req, res, next) => {
     await emergency.populate('triggered_by', 'name email flat_no phone');
 
     // Get all active users to send emergency alert emails
-    const allUsers = await User.find({ is_active: true }).select('name email flat_no phone');
+    const allUsers = await User.find({ is_active: true })
+      .select('name email flat_no phone');
 
     // Send emergency alert emails to all users
-    const emailPromises = allUsers.map(recipient => 
+    const emailPromises = allUsers.map(recipient =>
       sendEmergencyAlert({
         email: recipient.email,
         name: recipient.name,
         triggered_by_name: user.name,
-        triggered_by_flat: user.flat_no || (user.role === 'watchman' ? 'Security/Watchman' : 'Unknown'),
+        triggered_by_flat:
+          user.flat_no ||
+          (user.role === 'watchman' ? 'Security/Watchman' : 'Unknown'),
         triggered_by_phone: user.phone,
         triggered_at: emergency.triggered_at,
         notes: emergency.notes
       }).catch(err => {
-        console.error(`Failed to send emergency alert to ${recipient.email}:`, err.message);
+        console.error(
+          `Failed to send emergency alert to ${recipient.email}:`,
+          err.message
+        );
         return null;
       })
     );
@@ -55,7 +62,9 @@ exports.triggerEmergency = async (req, res, next) => {
     // Send emails in parallel (don't block response)
     Promise.all(emailPromises).then(results => {
       const sent = results.filter(r => r !== null).length;
-      console.log(`Emergency alerts sent to ${sent}/${allUsers.length} users`);
+      console.log(
+        `Emergency alerts sent to ${sent}/${allUsers.length} users`
+      );
     });
 
     res.status(201).json({
@@ -76,7 +85,9 @@ exports.triggerEmergency = async (req, res, next) => {
  */
 exports.getActiveEmergencies = async (req, res, next) => {
   try {
-    const activeEmergency = await LiftEmergency.findOne({ status: 'active' })
+    const activeEmergency = await LiftEmergency.findOne({
+      status: 'active'
+    })
       .populate('triggered_by', 'name email flat_no phone')
       .sort({ triggered_at: -1 });
 
@@ -123,9 +134,10 @@ exports.resolveEmergency = async (req, res, next) => {
     emergency.status = 'resolved';
     emergency.resolved_by = user._id;
     emergency.resolved_at = new Date();
+
     if (notes) {
-      emergency.notes = emergency.notes 
-        ? `${emergency.notes}\n\nResolution: ${notes}` 
+      emergency.notes = emergency.notes
+        ? `${emergency.notes}\n\nResolution: ${notes}`
         : `Resolution: ${notes}`;
     }
 
@@ -135,7 +147,8 @@ exports.resolveEmergency = async (req, res, next) => {
     await emergency.populate('resolved_by', 'name email flat_no');
 
     // Get all active users to send resolution emails
-    const allUsers = await User.find({ is_active: true }).select('name email');
+    const allUsers = await User.find({ is_active: true })
+      .select('name email');
 
     // Send resolution emails to all users
     const emailPromises = allUsers.map(recipient =>
@@ -149,7 +162,10 @@ exports.resolveEmergency = async (req, res, next) => {
         triggered_by_flat: emergency.triggered_by.flat_no,
         triggered_at: emergency.triggered_at
       }).catch(err => {
-        console.error(`Failed to send resolution email to ${recipient.email}:`, err.message);
+        console.error(
+          `Failed to send resolution email to ${recipient.email}:`,
+          err.message
+        );
         return null;
       })
     );
@@ -157,7 +173,9 @@ exports.resolveEmergency = async (req, res, next) => {
     // Send emails in parallel (don't block response)
     Promise.all(emailPromises).then(results => {
       const sent = results.filter(r => r !== null).length;
-      console.log(`Resolution emails sent to ${sent}/${allUsers.length} users`);
+      console.log(
+        `Resolution emails sent to ${sent}/${allUsers.length} users`
+      );
     });
 
     res.status(200).json({
@@ -174,7 +192,16 @@ exports.resolveEmergency = async (req, res, next) => {
 /**
  * @desc    Get emergency history
  * @route   GET /api/emergency/history
- * @access  Private (Manager, Admin only)
+ * @access  Private (All authenticated users)
+ *
+ * Resident:
+ *   - Can see only emergencies triggered by themselves
+ *
+ * Watchman:
+ *   - Can see emergency history
+ *
+ * Manager/Admin:
+ *   - Can see complete emergency history
  */
 exports.getEmergencyHistory = async (req, res, next) => {
   try {
@@ -182,9 +209,22 @@ exports.getEmergencyHistory = async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const total = await LiftEmergency.countDocuments();
+    const user = req.user;
 
-    const emergencies = await LiftEmergency.find()
+    // Build query according to user role
+    let query = {};
+
+    // Residents should only see their own emergency history
+    if (user.role === 'resident') {
+      query = {
+        triggered_by: user._id
+      };
+    }
+
+    // Manager/Admin/Watchman can see complete emergency history
+    const total = await LiftEmergency.countDocuments(query);
+
+    const emergencies = await LiftEmergency.find(query)
       .populate('triggered_by', 'name email flat_no phone')
       .populate('resolved_by', 'name email flat_no')
       .sort({ triggered_at: -1 })
