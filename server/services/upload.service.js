@@ -1,4 +1,5 @@
 const ImageKit = require('imagekit');
+const crypto = require('crypto');
 
 /**
  * ImageKit service for image uploads
@@ -18,13 +19,24 @@ const imagekit = new ImageKit({
  */
 exports.getAuthenticationParameters = () => {
   try {
-    const authParams = imagekit.getAuthenticationParameters();
+    // Generate a unique token for every upload authentication request
+    const token = crypto.randomUUID();
+
+    // Expire in 30 minutes
+    const expire = Math.floor(Date.now() / 1000) + 30 * 60;
+
+    // ImageKit signature = HMAC-SHA1(token + expire)
+    const signature = crypto
+      .createHmac('sha1', process.env.IMAGEKIT_PRIVATE_KEY)
+      .update(token + expire)
+      .digest('hex');
+
     return {
       success: true,
       data: {
-        token: authParams.token,
-        expire: authParams.expire,
-        signature: authParams.signature,
+        token,
+        expire,
+        signature,
         publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
         urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT
       }

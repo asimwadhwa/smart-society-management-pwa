@@ -7,16 +7,35 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Mail, Lock, ArrowRight, Loader2, LogIn } from 'lucide-react';
+import {
+  Mail,
+  Lock,
+  ArrowRight,
+  Loader2,
+  LogIn,
+} from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isAuthenticated, loading: authLoading } = useAuth();
-  
+  const {
+    login,
+    isAuthenticated,
+    loading: authLoading,
+  } = useAuth();
+
+  // Always start with blank fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -30,23 +49,39 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    // Validation
-    if (!email || !password) {
-      setError('Please fill in all fields');
+
+    const cleanEmail = email.trim();
+    const cleanPassword = password;
+
+    // Required validation
+    if (!cleanEmail || !cleanPassword) {
+      setError('Please enter both email and password.');
       return;
     }
 
-    if (!email.includes('@')) {
-      setError('Please enter a valid email address');
+    // Email validation
+    const emailRegex =
+      /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+    if (!emailRegex.test(cleanEmail)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    // Prevent password containing only spaces
+    if (!cleanPassword.trim()) {
+      setError('Password cannot be empty or contain only spaces.');
       return;
     }
 
     setLoading(true);
-    
+
     try {
-      const result = await login({ email, password });
-      
+      const result = await login({
+        email: cleanEmail.toLowerCase(),
+        password: cleanPassword,
+      });
+
       if (result.success) {
         // Redirect based on user role
         if (result.user?.role === 'watchman') {
@@ -55,10 +90,12 @@ export default function LoginPage() {
           router.push('/');
         }
       } else {
-        setError(result.message);
+        setError(result.message || 'Invalid email or password.');
       }
     } catch (err) {
-      setError('An unexpected error occurred. Please try again.');
+      setError(
+        'An unexpected error occurred. Please try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -71,7 +108,9 @@ export default function LoginPage() {
         <CardContent className="py-12">
           <div className="flex flex-col items-center justify-center gap-3">
             <div className="w-10 h-10 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin"></div>
-            <p className="text-sm text-slate-500">Checking authentication...</p>
+            <p className="text-sm text-slate-500">
+              Checking authentication...
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -86,65 +125,102 @@ export default function LoginPage() {
             <LogIn className="w-6 h-6 text-blue-600" />
           </div>
         </div>
-        <CardTitle className="text-2xl font-bold text-center text-slate-900">Welcome back</CardTitle>
+
+        <CardTitle className="text-2xl font-bold text-center text-slate-900">
+          Welcome back
+        </CardTitle>
+
         <CardDescription className="text-center text-slate-500">
           Sign in to your account to continue
         </CardDescription>
       </CardHeader>
-      <form onSubmit={handleSubmit}>
+
+      <form
+        onSubmit={handleSubmit}
+        autoComplete="off"
+      >
         <CardContent className="space-y-5">
           {error && (
-            <Alert variant="destructive" className="border-red-200 bg-red-50 text-red-700">
+            <Alert
+              variant="destructive"
+              className="border-red-200 bg-red-50 text-red-700"
+            >
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-          
+
+          {/* EMAIL */}
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-slate-700 font-medium">Email</Label>
+            <Label
+              htmlFor="login-email"
+              className="text-slate-700 font-medium"
+            >
+              Email
+            </Label>
+
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+
               <Input
-                id="email"
+                id="login-email"
+                name="login-email"
                 type="email"
                 placeholder="Enter your email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setError('');
+                }}
                 disabled={loading}
-                autoComplete="email"
+                autoComplete="off"
+                spellCheck={false}
                 className="pl-10 h-11 border-slate-200 focus:border-blue-500 focus:ring-blue-500"
               />
             </div>
           </div>
-          
+
+          {/* PASSWORD */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password" className="text-slate-700 font-medium">Password</Label>
-              <Link 
-                href="/forgot-password" 
+              <Label
+                htmlFor="login-password"
+                className="text-slate-700 font-medium"
+              >
+                Password
+              </Label>
+
+              <Link
+                href="/forgot-password"
                 className="text-sm text-blue-600 hover:text-blue-700 font-medium"
               >
                 Forgot password?
               </Link>
             </div>
+
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+
               <Input
-                id="password"
+                id="login-password"
+                name="login-password"
                 type="password"
                 placeholder="Enter your password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError('');
+                }}
                 disabled={loading}
-                autoComplete="current-password"
+                autoComplete="new-password"
                 className="pl-10 h-11 border-slate-200 focus:border-blue-500 focus:ring-blue-500"
               />
             </div>
           </div>
         </CardContent>
-        
+
         <CardFooter className="flex flex-col space-y-4 pt-2">
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             className="w-full h-11 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium shadow-lg shadow-blue-500/20"
             disabled={loading}
           >
@@ -160,20 +236,23 @@ export default function LoginPage() {
               </>
             )}
           </Button>
-          
+
           <div className="relative w-full">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-200"></div>
             </div>
+
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-slate-500">or</span>
+              <span className="px-2 bg-white text-slate-500">
+                or
+              </span>
             </div>
           </div>
-          
+
           <p className="text-sm text-center text-slate-600">
             Don&apos;t have an account?{' '}
-            <Link 
-              href="/register" 
+            <Link
+              href="/register"
               className="text-blue-600 font-semibold hover:text-blue-700"
             >
               Create account

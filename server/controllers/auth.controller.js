@@ -1,9 +1,12 @@
+const express = require('express');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { generateOTP, getOTPExpiry } = require('../utils/generateOTP');
 const emailService = require('../services/email.service');
 
+// ============================================================
 // Helper: Generate JWT Token
+// ============================================================
 const generateToken = (userId) => {
   return jwt.sign(
     { user_id: userId },
@@ -12,24 +15,186 @@ const generateToken = (userId) => {
   );
 };
 
+// ============================================================
 // Helper: Set JWT Cookie
+// ============================================================
 const setTokenCookie = (res, token) => {
   const isProduction = process.env.NODE_ENV === 'production';
+
   const cookieOptions = {
     httpOnly: true,
-    secure: isProduction, // Must be true for sameSite: 'none'
-    sameSite: isProduction ? 'none' : 'lax', // 'none' required for cross-origin cookies
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    path: '/'
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: '/',
   };
+
   res.cookie('token', token, cookieOptions);
 };
 
-// Helper: Validate flat number format (101-410)
+// ============================================================
+// Helper: Validate Flat Number
+// Allowed:
+// 101-110
+// 201-210
+// 301-310
+// 401-410
+// ============================================================
 const isValidFlatNo = (flatNo) => {
-  const floor = parseInt(flatNo.charAt(0));
-  const unit = parseInt(flatNo.substring(1));
-  return floor >= 1 && floor <= 4 && unit >= 1 && unit <= 10;
+  if (typeof flatNo !== 'string') {
+    return false;
+  }
+
+  return /^(10[1-9]|110|20[1-9]|210|30[1-9]|310|40[1-9]|410)$/.test(
+    flatNo.trim()
+  );
+};
+
+// ============================================================
+// Helper: Validate Email
+// ============================================================
+const isValidEmail = (email) => {
+  if (typeof email !== 'string') {
+    return false;
+  }
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(
+    email.trim()
+  );
+};
+
+// ============================================================
+// Helper: Validate Name
+// Allows letters, spaces, dot, apostrophe and hyphen
+// ============================================================
+const isValidName = (name) => {
+  if (typeof name !== 'string') {
+    return false;
+  }
+
+  const cleanName = name.trim();
+
+  if (cleanName.length < 2 || cleanName.length > 50) {
+    return false;
+  }
+
+  return /^[A-Za-zÀ-ÖØ-öø-ÿ.' -]+$/.test(cleanName);
+};
+
+// ============================================================
+// Helper: Validate Indian Mobile Number
+// Must be exactly 10 digits and start with 6-9
+// ============================================================
+const isValidPhone = (phone) => {
+  if (typeof phone !== 'string') {
+    return false;
+  }
+
+  return /^[6-9]\d{9}$/.test(phone.trim());
+};
+
+// ============================================================
+// Helper: Validate Strong Password
+// Minimum 8 characters
+// 1 uppercase
+// 1 lowercase
+// 1 number
+// 1 special character
+// No spaces
+// ============================================================
+const isStrongPassword = (password) => {
+  if (typeof password !== 'string') {
+    return false;
+  }
+
+  if (password.length < 8 || password.length > 64) {
+    return false;
+  }
+
+  // No spaces
+  if (/\s/.test(password)) {
+    return false;
+  }
+
+  // Uppercase
+  if (!/[A-Z]/.test(password)) {
+    return false;
+  }
+
+  // Lowercase
+  if (!/[a-z]/.test(password)) {
+    return false;
+  }
+
+  // Number
+  if (!/[0-9]/.test(password)) {
+    return false;
+  }
+
+  // Special character
+  if (!/[!@#$%^&*(),.?":{}|<>_\-\\[\]/+=;'`~]/.test(password)) {
+    return false;
+  }
+
+  return true;
+};
+
+// ============================================================
+// Helper: Validate Registration Details
+// ============================================================
+const validateUserDetails = ({
+  name,
+  email,
+  password,
+  flat_no,
+  phone,
+}) => {
+  const errors = [];
+
+  // Name
+  if (!name || !name.trim()) {
+    errors.push('Full name is required');
+  } else if (!isValidName(name)) {
+    errors.push(
+      'Full name must be 2-50 characters and can contain only letters, spaces, dot, apostrophe and hyphen'
+    );
+  }
+
+  // Email
+  if (!email || !email.trim()) {
+    errors.push('Email address is required');
+  } else if (!isValidEmail(email)) {
+    errors.push('Please enter a valid email address');
+  }
+
+  // Password
+  if (!password) {
+    errors.push('Password is required');
+  } else if (!isStrongPassword(password)) {
+    errors.push(
+      'Password must be 8-64 characters and contain uppercase, lowercase, number and special character, with no spaces'
+    );
+  }
+
+  // Flat
+  if (!flat_no || !flat_no.trim()) {
+    errors.push('Flat number is required');
+  } else if (!isValidFlatNo(flat_no)) {
+    errors.push(
+      'Invalid flat number. Must be between 101-110, 201-210, 301-310, or 401-410'
+    );
+  }
+
+  // Phone
+  if (!phone || !phone.trim()) {
+    errors.push('Phone number is required');
+  } else if (!isValidPhone(phone)) {
+    errors.push(
+      'Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9'
+    );
+  }
+
+  return errors;
 };
 
 /**
@@ -39,93 +204,154 @@ const isValidFlatNo = (flatNo) => {
  */
 exports.register = async (req, res, next) => {
   try {
-    const { name, email, password, flat_no, phone } = req.body;
+    const {
+      name,
+      email,
+      password,
+      flat_no,
+      phone,
+    } = req.body;
 
-    // Validate required fields
-    if (!name || !email || !password || !flat_no || !phone) {
+    // ========================================================
+    // Validate all registration details
+    // ========================================================
+    const validationErrors = validateUserDetails({
+      name,
+      email,
+      password,
+      flat_no,
+      phone,
+    });
+
+    if (validationErrors.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide all required fields: name, email, password, flat_no, phone'
+        message: validationErrors[0],
+        errors: validationErrors,
       });
     }
 
-    // Validate password length
-    if (password.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must be at least 6 characters'
-      });
-    }
+    // ========================================================
+    // Clean / normalize data
+    // ========================================================
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanFlatNo = flat_no.trim();
+    const cleanPhone = phone.trim();
 
-    // Validate flat number format
-    if (!isValidFlatNo(flat_no)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid flat number. Must be between 101-110, 201-210, 301-310, or 401-410'
-      });
-    }
-
+    // ========================================================
     // Check if email already exists
-    const existingEmail = await User.findOne({ email: email.toLowerCase() });
+    // ========================================================
+    const existingEmail = await User.findOne({
+      email: cleanEmail,
+    });
+
     if (existingEmail) {
       return res.status(400).json({
         success: false,
-        message: 'Email is already registered'
+        message: 'Email is already registered',
       });
     }
 
+    // ========================================================
     // Check if flat is already registered
-    const existingFlat = await User.findOne({ flat_no });
+    // ========================================================
+    const existingFlat = await User.findOne({
+      flat_no: cleanFlatNo,
+    });
+
     if (existingFlat) {
       return res.status(400).json({
         success: false,
-        message: 'This flat is already registered'
+        message: 'This flat is already registered',
       });
     }
 
-    // Check if manager exists (residents can only register after manager)
-    const managerExists = await User.findOne({ role: 'manager' });
+    // ========================================================
+    // Check if manager exists
+    // Residents can register only after manager
+    // ========================================================
+    const managerExists = await User.findOne({
+      role: 'manager',
+    });
+
     if (!managerExists) {
       return res.status(400).json({
         success: false,
-        message: 'Manager must be registered first. Please contact your society manager.'
+        message:
+          'Manager must be registered first. Please contact your society manager.',
       });
     }
 
-    // Create user
+    // ========================================================
+    // Create resident
+    // ========================================================
     const user = await User.create({
-      name,
-      email: email.toLowerCase(),
-      password_hash: password, // Will be hashed by pre-save hook
-      flat_no,
-      phone,
-      role: 'resident'
+      name: cleanName,
+      email: cleanEmail,
+      password_hash: password,
+      flat_no: cleanFlatNo,
+      phone: cleanPhone,
+      role: 'resident',
     });
 
-    // Generate token
+    // ========================================================
+    // Generate JWT
+    // ========================================================
     const token = generateToken(user._id);
 
+    // ========================================================
     // Set cookie
+    // ========================================================
     setTokenCookie(res, token);
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'Registration successful',
       data: {
         user: user.toJSON(),
-        token
-      }
+        token,
+      },
     });
-
   } catch (error) {
     // Handle mongoose validation errors
     if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(err => err.message);
+      const messages = Object.values(error.errors).map(
+        (err) => err.message
+      );
+
       return res.status(400).json({
         success: false,
-        message: messages.join('. ')
+        message: messages.join('. '),
       });
     }
+
+    // Handle duplicate key error
+    if (error.code === 11000) {
+      const duplicateField = Object.keys(
+        error.keyPattern || {}
+      )[0];
+
+      if (duplicateField === 'email') {
+        return res.status(400).json({
+          success: false,
+          message: 'Email is already registered',
+        });
+      }
+
+      if (duplicateField === 'flat_no') {
+        return res.status(400).json({
+          success: false,
+          message: 'This flat is already registered',
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: 'Duplicate data already exists',
+      });
+    }
+
     next(error);
   }
 };
@@ -137,64 +363,110 @@ exports.register = async (req, res, next) => {
  */
 exports.login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const {
+      email,
+      password,
+    } = req.body;
 
-    // Validate input
-    if (!email || !password) {
+    // ========================================================
+    // Basic validation
+    // ========================================================
+    if (
+      typeof email !== 'string' ||
+      !email.trim()
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide email and password'
+        message: 'Please enter your email address',
       });
     }
 
-    // Find user by email (include password for comparison)
-    const user = await User.findOne({ email: email.toLowerCase() });
+    if (
+      typeof password !== 'string' ||
+      !password.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter your password',
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // ========================================================
+    // Email validation
+    // ========================================================
+    if (!isValidEmail(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid email address',
+      });
+    }
+
+    // ========================================================
+    // Find user
+    // ========================================================
+    const user = await User.findOne({
+      email: cleanEmail,
+    });
+
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid email or password',
       });
     }
 
-    // Check if account is active
+    // ========================================================
+    // Check account status
+    // ========================================================
     if (!user.is_active) {
       return res.status(401).json({
         success: false,
-        message: 'Your account has been deactivated. Please contact the manager.'
+        message:
+          'Your account has been deactivated. Please contact the manager.',
       });
     }
 
+    // ========================================================
     // Compare password
-    const isMatch = await user.comparePassword(password);
+    // ========================================================
+    const isMatch = await user.comparePassword(
+      password
+    );
+
     if (!isMatch) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid email or password',
       });
     }
 
+    // ========================================================
     // Generate token
+    // ========================================================
     const token = generateToken(user._id);
 
+    // ========================================================
     // Set cookie
+    // ========================================================
     setTokenCookie(res, token);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Login successful',
       data: {
         user: user.toJSON(),
-        token
-      }
+        token,
+      },
     });
-
   } catch (error) {
     next(error);
   }
 };
 
 /**
- * @desc    Logout user (clear cookie)
+ * @desc    Logout user
  * @route   POST /api/auth/logout
  * @access  Public
  */
@@ -202,14 +474,14 @@ exports.logout = async (req, res, next) => {
   try {
     res.cookie('token', '', {
       httpOnly: true,
-      expires: new Date(0)
+      expires: new Date(0),
+      path: '/',
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: 'Logged out successfully'
+      message: 'Logged out successfully',
     });
-
   } catch (error) {
     next(error);
   }
@@ -222,101 +494,174 @@ exports.logout = async (req, res, next) => {
  */
 exports.getCurrentUser = async (req, res, next) => {
   try {
-    // User is already attached by auth middleware
     const user = await User.findById(req.user._id);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'User not found',
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      data: { user: user.toJSON() }
+      data: {
+        user: user.toJSON(),
+      },
     });
-
   } catch (error) {
     next(error);
   }
 };
 
 /**
- * @desc    One-time manager setup (first user)
+ * @desc    One-time manager setup
  * @route   POST /api/auth/manager-setup
  * @access  Public
  */
 exports.managerSetup = async (req, res, next) => {
   try {
-    const { name, email, password, flat_no, phone } = req.body;
+    const {
+      name,
+      email,
+      password,
+      flat_no,
+      phone,
+    } = req.body;
 
+    // ========================================================
     // Check if manager already exists
-    const managerExists = await User.findOne({ role: 'manager' });
+    // ========================================================
+    const managerExists = await User.findOne({
+      role: 'manager',
+    });
+
     if (managerExists) {
       return res.status(400).json({
         success: false,
-        message: 'Manager is already registered. This is a one-time setup.'
+        message:
+          'Manager is already registered. This is a one-time setup.',
       });
     }
 
-    // Validate required fields
-    if (!name || !email || !password || !flat_no || !phone) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide all required fields: name, email, password, flat_no, phone'
-      });
-    }
-
-    // Validate password length
-    if (password.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must be at least 6 characters'
-      });
-    }
-
-    // Validate flat number
-    if (!isValidFlatNo(flat_no)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid flat number. Must be between 101-110, 201-210, 301-310, or 401-410'
-      });
-    }
-
-    // Create manager
-    const manager = await User.create({
+    // ========================================================
+    // Validate details
+    // ========================================================
+    const validationErrors = validateUserDetails({
       name,
-      email: email.toLowerCase(),
-      password_hash: password,
+      email,
+      password,
       flat_no,
       phone,
-      role: 'manager'
     });
 
-    // Generate token
-    const token = generateToken(manager._id);
-
-    // Set cookie
-    setTokenCookie(res, token);
-
-    res.status(201).json({
-      success: true,
-      message: 'Manager setup successful. Welcome!',
-      data: {
-        user: manager.toJSON(),
-        token
-      }
-    });
-
-  } catch (error) {
-    if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(err => err.message);
+    if (validationErrors.length > 0) {
       return res.status(400).json({
         success: false,
-        message: messages.join('. ')
+        message: validationErrors[0],
+        errors: validationErrors,
       });
     }
+
+    // ========================================================
+    // Clean / normalize
+    // ========================================================
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanFlatNo = flat_no.trim();
+    const cleanPhone = phone.trim();
+
+    // ========================================================
+    // Check duplicate email
+    // ========================================================
+    const existingEmail = await User.findOne({
+      email: cleanEmail,
+    });
+
+    if (existingEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is already registered',
+      });
+    }
+
+    // ========================================================
+    // Check duplicate flat
+    // ========================================================
+    const existingFlat = await User.findOne({
+      flat_no: cleanFlatNo,
+    });
+
+    if (existingFlat) {
+      return res.status(400).json({
+        success: false,
+        message: 'This flat is already registered',
+      });
+    }
+
+    // ========================================================
+    // Create manager
+    // ========================================================
+    const manager = await User.create({
+      name: cleanName,
+      email: cleanEmail,
+      password_hash: password,
+      flat_no: cleanFlatNo,
+      phone: cleanPhone,
+      role: 'manager',
+    });
+
+    // ========================================================
+    // Generate token
+    // ========================================================
+    const token = generateToken(manager._id);
+
+    // ========================================================
+    // Set cookie
+    // ========================================================
+    setTokenCookie(res, token);
+
+    return res.status(201).json({
+      success: true,
+      message:
+        'Manager setup successful. Welcome!',
+      data: {
+        user: manager.toJSON(),
+        token,
+      },
+    });
+  } catch (error) {
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(
+        error.errors
+      ).map((err) => err.message);
+
+      return res.status(400).json({
+        success: false,
+        message: messages.join('. '),
+      });
+    }
+
+    if (error.code === 11000) {
+      const duplicateField = Object.keys(
+        error.keyPattern || {}
+      )[0];
+
+      if (duplicateField === 'email') {
+        return res.status(400).json({
+          success: false,
+          message: 'Email is already registered',
+        });
+      }
+
+      if (duplicateField === 'flat_no') {
+        return res.status(400).json({
+          success: false,
+          message: 'This flat is already registered',
+        });
+      }
+    }
+
     next(error);
   }
 };
@@ -326,15 +671,22 @@ exports.managerSetup = async (req, res, next) => {
  * @route   GET /api/auth/manager-exists
  * @access  Public
  */
-exports.checkManagerExists = async (req, res, next) => {
+exports.checkManagerExists = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const managerExists = await User.findOne({ role: 'manager' });
-    
-    res.status(200).json({
-      success: true,
-      data: { exists: !!managerExists }
+    const managerExists = await User.findOne({
+      role: 'manager',
     });
 
+    return res.status(200).json({
+      success: true,
+      data: {
+        exists: !!managerExists,
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -345,74 +697,113 @@ exports.checkManagerExists = async (req, res, next) => {
  * @route   POST /api/auth/forgot-password
  * @access  Public
  */
-exports.forgotPassword = async (req, res, next) => {
+exports.forgotPassword = async (
+  req,
+  res,
+  next
+) => {
   try {
     const { email } = req.body;
 
     // Validate email
-    if (!email) {
+    if (
+      typeof email !== 'string' ||
+      !email.trim()
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide your email address'
+        message:
+          'Please provide your email address',
       });
     }
 
-    // Find user by email
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const cleanEmail =
+      email.trim().toLowerCase();
+
+    if (!isValidEmail(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Please enter a valid email address',
+      });
+    }
+
+    // Find user
+    const user = await User.findOne({
+      email: cleanEmail,
+    });
+
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'No account found with this email address'
+        message:
+          'No account found with this email address',
       });
     }
 
-    // Check if user is active
+    // Check active
     if (!user.is_active) {
       return res.status(403).json({
         success: false,
-        message: 'This account has been deactivated'
+        message:
+          'This account has been deactivated',
       });
     }
 
-    // Generate OTP and expiry
+    // Generate OTP
     const otp = generateOTP();
     const otpExpiry = getOTPExpiry();
 
-    // Save OTP to user document
     user.otp = otp;
     user.otp_expires = otpExpiry;
-    await user.save({ validateBeforeSave: false });
+
+    await user.save({
+      validateBeforeSave: false,
+    });
 
     // Send OTP email
     try {
       await emailService.sendPasswordResetOTP({
         email: user.email,
         name: user.name,
-        otp: otp,
-        expiryMinutes: parseInt(process.env.OTP_EXPIRY_MINUTES) || 10
+        otp,
+        expiryMinutes:
+          parseInt(
+            process.env.OTP_EXPIRY_MINUTES
+          ) || 10,
       });
     } catch (emailError) {
-      // Clear OTP if email fails
       user.otp = null;
       user.otp_expires = null;
-      await user.save({ validateBeforeSave: false });
 
-      console.error('Failed to send OTP email:', emailError);
+      await user.save({
+        validateBeforeSave: false,
+      });
+
+      console.error(
+        'Failed to send OTP email:',
+        emailError
+      );
+
       return res.status(500).json({
         success: false,
-        message: 'Failed to send OTP email. Please try again later.'
+        message:
+          'Failed to send OTP email. Please try again later.',
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: 'OTP sent to your email address',
+      message:
+        'OTP sent to your email address',
       data: {
         email: user.email,
-        expiryMinutes: parseInt(process.env.OTP_EXPIRY_MINUTES) || 10
-      }
+        expiryMinutes:
+          parseInt(
+            process.env.OTP_EXPIRY_MINUTES
+          ) || 10,
+      },
     });
-
   } catch (error) {
     next(error);
   }
@@ -423,164 +814,253 @@ exports.forgotPassword = async (req, res, next) => {
  * @route   POST /api/auth/verify-otp
  * @access  Public
  */
-exports.verifyOTP = async (req, res, next) => {
+exports.verifyOTP = async (
+  req,
+  res,
+  next
+) => {
   try {
     const { email, otp } = req.body;
 
     // Validate input
-    if (!email || !otp) {
+    if (
+      typeof email !== 'string' ||
+      !email.trim() ||
+      !otp
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide email and OTP'
+        message:
+          'Please provide email and OTP',
       });
     }
 
-    // Find user by email
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const cleanEmail =
+      email.trim().toLowerCase();
+
+    // Validate email
+    if (!isValidEmail(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Please enter a valid email address',
+      });
+    }
+
+    // Validate OTP format
+    if (!/^\d{6}$/.test(String(otp))) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'OTP must be a 6-digit number',
+      });
+    }
+
+    const user = await User.findOne({
+      email: cleanEmail,
+    });
+
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'No account found with this email address'
+        message:
+          'No account found with this email address',
       });
     }
 
-    // Check if OTP exists
     if (!user.otp || !user.otp_expires) {
       return res.status(400).json({
         success: false,
-        message: 'No OTP request found. Please request a new OTP.'
+        message:
+          'No OTP request found. Please request a new OTP.',
       });
     }
 
-    // Check if OTP is expired
-    if (new Date() > new Date(user.otp_expires)) {
-      // Clear expired OTP
+    // Check expiry
+    if (
+      new Date() >
+      new Date(user.otp_expires)
+    ) {
       user.otp = null;
       user.otp_expires = null;
-      await user.save({ validateBeforeSave: false });
+
+      await user.save({
+        validateBeforeSave: false,
+      });
 
       return res.status(400).json({
         success: false,
-        message: 'OTP has expired. Please request a new one.'
+        message:
+          'OTP has expired. Please request a new one.',
       });
     }
 
-    // Verify OTP
-    if (user.otp !== otp) {
+    // Check OTP
+    if (user.otp !== String(otp)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid OTP. Please check and try again.'
+        message:
+          'Invalid OTP. Please check and try again.',
       });
     }
 
-    // OTP is valid - generate a temporary reset token
+    // Generate reset token
     const resetToken = jwt.sign(
-      { user_id: user._id, purpose: 'password_reset' },
+      {
+        user_id: user._id,
+        purpose: 'password_reset',
+      },
       process.env.JWT_SECRET,
-      { expiresIn: '15m' } // Token valid for 15 minutes
+      {
+        expiresIn: '15m',
+      }
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: 'OTP verified successfully',
+      message:
+        'OTP verified successfully',
       data: {
         resetToken,
-        email: user.email
-      }
+        email: user.email,
+      },
     });
-
   } catch (error) {
     next(error);
   }
 };
 
 /**
- * @desc    Reset password with verified OTP
+ * @desc    Reset password
  * @route   POST /api/auth/reset-password
  * @access  Public
  */
-exports.resetPassword = async (req, res, next) => {
+exports.resetPassword = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const { email, resetToken, newPassword, confirmPassword } = req.body;
+    const {
+      email,
+      resetToken,
+      newPassword,
+      confirmPassword,
+    } = req.body;
 
-    // Validate input
-    if (!email || !resetToken || !newPassword || !confirmPassword) {
+    // Validate required fields
+    if (
+      typeof email !== 'string' ||
+      !email.trim() ||
+      !resetToken ||
+      !newPassword ||
+      !confirmPassword
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide all required fields'
+        message:
+          'Please provide all required fields',
       });
     }
 
-    // Check password match
+    const cleanEmail =
+      email.trim().toLowerCase();
+
+    // Validate email
+    if (!isValidEmail(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Please enter a valid email address',
+      });
+    }
+
+    // Password match
     if (newPassword !== confirmPassword) {
       return res.status(400).json({
         success: false,
-        message: 'Passwords do not match'
+        message:
+          'Passwords do not match',
       });
     }
 
-    // Validate password length
-    if (newPassword.length < 6) {
+    // Strong password validation
+    if (!isStrongPassword(newPassword)) {
       return res.status(400).json({
         success: false,
-        message: 'Password must be at least 6 characters'
+        message:
+          'Password must be 8-64 characters and contain uppercase, lowercase, number and special character, with no spaces',
       });
     }
 
     // Verify reset token
     let decoded;
+
     try {
-      decoded = jwt.verify(resetToken, process.env.JWT_SECRET);
+      decoded = jwt.verify(
+        resetToken,
+        process.env.JWT_SECRET
+      );
     } catch (tokenError) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid or expired reset token. Please request a new OTP.'
+        message:
+          'Invalid or expired reset token. Please request a new OTP.',
       });
     }
 
     // Check token purpose
-    if (decoded.purpose !== 'password_reset') {
+    if (
+      decoded.purpose !==
+      'password_reset'
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid reset token'
+        message:
+          'Invalid reset token',
       });
     }
 
-    // Find user by email and token user_id
-    const user = await User.findOne({ 
+    // Find user
+    const user = await User.findOne({
       _id: decoded.user_id,
-      email: email.toLowerCase() 
+      email: cleanEmail,
     });
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'User not found',
       });
     }
 
-    // Update password (will be hashed by pre-save hook)
+    // Update password
     user.password_hash = newPassword;
     user.otp = null;
     user.otp_expires = null;
+
     await user.save();
 
     // Send confirmation email
     try {
-      await emailService.sendPasswordResetConfirmation({
-        email: user.email,
-        name: user.name
-      });
+      await emailService.sendPasswordResetConfirmation(
+        {
+          email: user.email,
+          name: user.name,
+        }
+      );
     } catch (emailError) {
-      console.error('Failed to send password reset confirmation:', emailError);
-      // Don't fail the request, password was already reset
+      console.error(
+        'Failed to send password reset confirmation:',
+        emailError
+      );
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: 'Password reset successful. You can now login with your new password.'
+      message:
+        'Password reset successful. You can now login with your new password.',
     });
-
   } catch (error) {
     next(error);
   }

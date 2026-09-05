@@ -118,6 +118,7 @@ export default function NewComplaintPage() {
 
         try {
           imageUrl = await uploadImage(selectedFile);
+          console.log('Uploaded Image URL:', imageUrl);
 
           setUploadProgress('done');
         } catch (uploadError: any) {
