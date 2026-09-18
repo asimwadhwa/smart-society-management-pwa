@@ -2,108 +2,196 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 /**
- * Authenticate user via JWT token in cookies or Authorization header
+ * Authenticate user using JWT
+ *
+ * Token sources:
+ * 1. HTTP-only cookie
+ * 2. Authorization: Bearer <token>
+ *
+ * JWT payload:
+ * {
+ *   user_id: "<MongoDB User ID>"
+ * }
  */
 const authenticate = async (req, res, next) => {
   try {
-    // Get token from cookies or Authorization header
-    let token = req.cookies.token;
+    let token = null;
 
-    // Check Authorization header if cookie not found
-    if (!token && req.headers.authorization) {
-      const authHeader = req.headers.authorization;
-      if (authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7);
+    // ==========================================================
+    // GET TOKEN FROM COOKIE
+    // ==========================================================
+    if (
+      req.cookies &&
+      req.cookies.token
+    ) {
+      token = req.cookies.token;
+    }
+
+    // ==========================================================
+    // GET TOKEN FROM AUTHORIZATION HEADER
+    // ==========================================================
+    if (
+      !token &&
+      req.headers.authorization
+    ) {
+      const authHeader =
+        req.headers.authorization;
+
+      if (
+        authHeader.startsWith('Bearer ')
+      ) {
+        token =
+          authHeader
+            .substring(7)
+            .trim();
       }
     }
 
-    // DEBUG
-    console.log("=================================");
-    console.log("TOKEN:", token);
-    console.log("Authorization Header:", req.headers.authorization);
-    console.log("=================================");
-
+    // ==========================================================
+    // TOKEN NOT FOUND
+    // ==========================================================
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: 'Access denied. No token provided.'
+        message:
+          'Access denied. No token provided.'
       });
     }
 
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // ==========================================================
+    // VERIFY JWT
+    // ==========================================================
+    let decoded;
 
-    // DEBUG
-    console.log("DECODED TOKEN:");
-    console.log(decoded);
+    try {
+      decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET
+      );
+    } catch (error) {
 
-    // Get user from database
-    const user = await User.findById(decoded.user_id).select('-password_hash');
+      if (
+        error.name ===
+        'TokenExpiredError'
+      ) {
+        return res.status(401).json({
+          success: false,
+          message: 'Token expired.'
+        });
+      }
 
-    // DEBUG
-    console.log("USER FOUND:");
-    console.log(user);
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found.'
-      });
-    }
-
-    if (!user.is_active) {
-      return res.status(401).json({
-        success: false,
-        message: 'Account is deactivated.'
-      });
-    }
-
-    // Attach user to request
-    req.user = user;
-
-    console.log("✅ Authentication Successful");
-    console.log("=================================");
-
-    next();
-
-  } catch (error) {
-    console.log("❌ AUTH ERROR:");
-    console.log(error);
-
-    if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({
         success: false,
         message: 'Invalid token.'
       });
     }
 
-    if (error.name === 'TokenExpiredError') {
+    // ==========================================================
+    // CHECK USER ID IN TOKEN
+    // ==========================================================
+    if (!decoded || !decoded.user_id) {
       return res.status(401).json({
         success: false,
-        message: 'Token expired.'
+        message: 'Invalid token.'
       });
     }
+
+    // ==========================================================
+    // FIND USER
+    // ==========================================================
+    const user =
+      await User.findById(
+        decoded.user_id
+      ).select(
+        '-password_hash'
+      );
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message:
+          'User not found.'
+      });
+    }
+
+    // ==========================================================
+    // CHECK ACTIVE ACCOUNT
+    // ==========================================================
+    if (!user.is_active) {
+      return res.status(401).json({
+        success: false,
+        message:
+          'Account is deactivated.'
+      });
+    }
+
+    // ==========================================================
+    // SOCIETY VALIDATION
+    //
+    // Super Admin:
+    //   society_id = null
+    //
+    // Manager/Admin/Resident/Watchman:
+    //   society_id must exist
+    // ==========================================================
+    if (
+      user.role !== 'super_admin' &&
+      !user.society_id
+    ) {
+      return res.status(401).json({
+        success: false,
+        message:
+          'User is not assigned to any society.'
+      });
+    }
+
+    // ==========================================================
+    // ATTACH USER TO REQUEST
+    // ==========================================================
+    req.user = user;
+
+    next();
+
+  } catch (error) {
+
+    console.error(
+      'Authentication error:',
+      error
+    );
 
     next(error);
   }
 };
 
 /**
- * Authorize user based on roles
+ * Authorize user based on role
  */
 const authorize = (...roles) => {
   return (req, res, next) => {
+
+    // ==========================================================
+    // AUTHENTICATION REQUIRED
+    // ==========================================================
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: 'Authentication required.'
+        message:
+          'Authentication required.'
       });
     }
 
-    if (!roles.includes(req.user.role)) {
+    // ==========================================================
+    // ROLE CHECK
+    // ==========================================================
+    if (
+      !roles.includes(
+        req.user.role
+      )
+    ) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied. Insufficient permissions.'
+        message:
+          'Access denied. Insufficient permissions.'
       });
     }
 

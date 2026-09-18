@@ -1,39 +1,62 @@
 const Asset = require('../models/Asset');
 
 /**
- * @desc    Get all assets
+ * @desc    Get all assets of current society
  * @route   GET /api/assets
  * @access  Private (All authenticated users)
  */
 exports.getAllAssets = async (req, res, next) => {
   try {
     const { status, type } = req.query;
-    
-    // Build query
-    const query = {};
-    if (status && ['working', 'under_maintenance', 'not_working'].includes(status)) {
+    const societyId = req.user.society_id;
+
+    if (!societyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not associated with any society'
+      });
+    }
+
+    const query = {
+      society_id: societyId
+    };
+
+    if (
+      status &&
+      ['working', 'under_maintenance', 'not_working'].includes(status)
+    ) {
       query.status = status;
     }
-    if (type && ['lift', 'water_pump', 'generator'].includes(type)) {
+
+    if (
+      type &&
+      ['lift', 'water_pump', 'generator'].includes(type)
+    ) {
       query.type = type;
     }
 
     const assets = await Asset.find(query)
       .sort({ type: 1, name: 1 });
 
-    // Calculate stats
     const stats = {
       total: assets.length,
-      working: assets.filter(a => a.status === 'working').length,
-      under_maintenance: assets.filter(a => a.status === 'under_maintenance').length,
-      not_working: assets.filter(a => a.status === 'not_working').length
+      working: assets.filter(
+        a => a.status === 'working'
+      ).length,
+      under_maintenance: assets.filter(
+        a => a.status === 'under_maintenance'
+      ).length,
+      not_working: assets.filter(
+        a => a.status === 'not_working'
+      ).length
     };
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: assets,
       stats
     });
+
   } catch (error) {
     console.error('Error fetching assets:', error);
     next(error);
@@ -47,19 +70,32 @@ exports.getAllAssets = async (req, res, next) => {
  */
 exports.getAssetById = async (req, res, next) => {
   try {
-    const asset = await Asset.findById(req.params.id);
+    const societyId = req.user.society_id;
+
+    if (!societyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not associated with any society'
+      });
+    }
+
+    const asset = await Asset.findOne({
+      _id: req.params.id,
+      society_id: societyId
+    });
 
     if (!asset) {
       return res.status(404).json({
         success: false,
-        message: 'Asset not found'
+        message: 'Asset not found in your society'
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: asset
     });
+
   } catch (error) {
     console.error('Error fetching asset:', error);
     next(error);
@@ -73,9 +109,22 @@ exports.getAssetById = async (req, res, next) => {
  */
 exports.createAsset = async (req, res, next) => {
   try {
-    const { name, type, status, location } = req.body;
+    const {
+      name,
+      type,
+      status,
+      location
+    } = req.body;
 
-    // Validate required fields
+    const societyId = req.user.society_id;
+
+    if (!societyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not associated with any society'
+      });
+    }
+
     if (!name || !type) {
       return res.status(400).json({
         success: false,
@@ -83,16 +132,19 @@ exports.createAsset = async (req, res, next) => {
       });
     }
 
-    // Validate type
-    if (!['lift', 'water_pump', 'generator'].includes(type)) {
+    if (
+      !['lift', 'water_pump', 'generator'].includes(type)
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid asset type. Must be lift, water_pump, or generator'
+        message:
+          'Invalid asset type. Must be lift, water_pump, or generator'
       });
     }
 
-    // Check if asset with same name and type already exists
-    const existingAsset = await Asset.findOne({ 
+    // Check duplicate only inside current society
+    const existingAsset = await Asset.findOne({
+      society_id: societyId,
       name: name.trim(),
       type: type
     });
@@ -100,12 +152,13 @@ exports.createAsset = async (req, res, next) => {
     if (existingAsset) {
       return res.status(400).json({
         success: false,
-        message: 'An asset with this name and type already exists'
+        message:
+          'An asset with this name and type already exists in your society'
       });
     }
 
-    // Create asset
     const asset = await Asset.create({
+      society_id: societyId,
       name: name.trim(),
       type,
       status: status || 'working',
@@ -113,11 +166,12 @@ exports.createAsset = async (req, res, next) => {
       services: []
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'Asset created successfully',
       data: asset
     });
+
   } catch (error) {
     console.error('Error creating asset:', error);
     next(error);
@@ -132,27 +186,43 @@ exports.createAsset = async (req, res, next) => {
 exports.updateAsset = async (req, res, next) => {
   try {
     const { name, location } = req.body;
+    const societyId = req.user.society_id;
 
-    const asset = await Asset.findById(req.params.id);
+    if (!societyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not associated with any society'
+      });
+    }
+
+    const asset = await Asset.findOne({
+      _id: req.params.id,
+      society_id: societyId
+    });
 
     if (!asset) {
       return res.status(404).json({
         success: false,
-        message: 'Asset not found'
+        message: 'Asset not found in your society'
       });
     }
 
-    // Update fields
-    if (name) asset.name = name.trim();
-    if (location !== undefined) asset.location = location;
+    if (name) {
+      asset.name = name.trim();
+    }
+
+    if (location !== undefined) {
+      asset.location = location;
+    }
 
     await asset.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Asset updated successfully',
       data: asset
     });
+
   } catch (error) {
     console.error('Error updating asset:', error);
     next(error);
@@ -167,33 +237,51 @@ exports.updateAsset = async (req, res, next) => {
 exports.updateAssetStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
+    const societyId = req.user.society_id;
 
-    // Validate status
-    if (!status || !['working', 'under_maintenance', 'not_working'].includes(status)) {
+    if (!societyId) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid status. Must be working, under_maintenance, or not_working'
+        message: 'User is not associated with any society'
       });
     }
 
-    const asset = await Asset.findById(req.params.id);
+    if (
+      !status ||
+      !['working', 'under_maintenance', 'not_working'].includes(status)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid status. Must be working, under_maintenance, or not_working'
+      });
+    }
+
+    const asset = await Asset.findOne({
+      _id: req.params.id,
+      society_id: societyId
+    });
 
     if (!asset) {
       return res.status(404).json({
         success: false,
-        message: 'Asset not found'
+        message: 'Asset not found in your society'
       });
     }
 
     const oldStatus = asset.status;
+
     asset.status = status;
+
     await asset.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: `Asset status updated from ${oldStatus} to ${status}`,
+      message:
+        `Asset status updated from ${oldStatus} to ${status}`,
       data: asset
     });
+
   } catch (error) {
     console.error('Error updating asset status:', error);
     next(error);
@@ -207,26 +295,41 @@ exports.updateAssetStatus = async (req, res, next) => {
  */
 exports.logServiceEntry = async (req, res, next) => {
   try {
-    const { description, done_by, date } = req.body;
+    const {
+      description,
+      done_by,
+      date
+    } = req.body;
 
-    // Validate required fields
-    if (!description || !done_by) {
+    const societyId = req.user.society_id;
+
+    if (!societyId) {
       return res.status(400).json({
         success: false,
-        message: 'Description and technician name (done_by) are required'
+        message: 'User is not associated with any society'
       });
     }
 
-    const asset = await Asset.findById(req.params.id);
+    if (!description || !done_by) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Description and technician name (done_by) are required'
+      });
+    }
+
+    const asset = await Asset.findOne({
+      _id: req.params.id,
+      society_id: societyId
+    });
 
     if (!asset) {
       return res.status(404).json({
         success: false,
-        message: 'Asset not found'
+        message: 'Asset not found in your society'
       });
     }
 
-    // Add service entry
     const serviceEntry = {
       date: date ? new Date(date) : new Date(),
       description: description.trim(),
@@ -234,15 +337,15 @@ exports.logServiceEntry = async (req, res, next) => {
     };
 
     asset.services.push(serviceEntry);
-    
-    // last_service_date is automatically updated via pre-save hook in model
+
     await asset.save();
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'Service entry added successfully',
       data: asset
     });
+
   } catch (error) {
     console.error('Error adding service entry:', error);
     next(error);
@@ -256,21 +359,37 @@ exports.logServiceEntry = async (req, res, next) => {
  */
 exports.deleteAsset = async (req, res, next) => {
   try {
-    const asset = await Asset.findById(req.params.id);
+    const societyId = req.user.society_id;
+
+    if (!societyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not associated with any society'
+      });
+    }
+
+    const asset = await Asset.findOne({
+      _id: req.params.id,
+      society_id: societyId
+    });
 
     if (!asset) {
       return res.status(404).json({
         success: false,
-        message: 'Asset not found'
+        message: 'Asset not found in your society'
       });
     }
 
-    await Asset.findByIdAndDelete(req.params.id);
+    await Asset.findOneAndDelete({
+      _id: req.params.id,
+      society_id: societyId
+    });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Asset deleted successfully'
     });
+
   } catch (error) {
     console.error('Error deleting asset:', error);
     next(error);

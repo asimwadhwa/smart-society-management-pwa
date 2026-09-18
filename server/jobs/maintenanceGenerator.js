@@ -1,70 +1,60 @@
 const Maintenance = require('../models/Maintenance');
 const User = require('../models/User');
+const Society = require('../models/Society');
 const emailService = require('../services/email.service');
 
 /**
- * Generate monthly maintenance records for all registered flats
- * Runs on 1st of every month at midnight
- * 
- * Creates a maintenance record for each user with role: resident, admin, or manager
- * Amount: ₹1000 (fixed)
- * Due date: 18th of current month
- * Status: pending
+ * Generate maintenance for one society
  */
-const generateMonthlyMaintenance = async () => {
-  try {
-    const now = new Date();
-    const month = now.getMonth() + 1; // JavaScript months are 0-indexed
-    const year = now.getFullYear();
-    const dueDate = new Date(year, now.getMonth(), 18); // 18th of current month
-    
-    console.log(`📅 Generating maintenance records for ${month}/${year}...`);
-    
-    // Get all active users who need to pay maintenance (residents, admins, managers)
-    // Exclude watchmen as they don't pay maintenance
-    const users = await User.find({
-      role: { $in: ['resident', 'admin', 'manager'] },
-      flat_no: { $exists: true, $ne: null }
-    }).select('_id name email flat_no');
-    
-    console.log(`Found ${users.length} users to generate maintenance for`);
-    
-    let created = 0;
-    let skipped = 0;
-    let errors = 0;
-    
-    for (const user of users) {
-      try {
-        // Check if maintenance record already exists for this flat/month/year
-        const existing = await Maintenance.findOne({
-          flat_no: user.flat_no,
-          month,
-          year
-        });
-        
-        if (existing) {
-          console.log(`⏭️ Skipping flat ${user.flat_no} - record already exists`);
-          skipped++;
-          continue;
-        }
-        
-        // Create new maintenance record
-        const maintenance = await Maintenance.create({
-          user_id: user._id,
-          flat_no: user.flat_no,
-          month,
-          year,
-          amount: 1000, // Fixed ₹1000
-          late_fee: 0,
-          total_amount: 1000,
-          due_date: dueDate,
-          status: 'pending'
-        });
-        
-        console.log(`✅ Created maintenance for flat ${user.flat_no}`);
-        created++;
-        
-        // Send invoice email
+const generateMaintenanceForSociety = async (
+  societyId,
+  month,
+  year,
+  sendEmail = true
+) => {
+  const dueDate = new Date(year, month - 1, 18);
+
+  const users = await User.find({
+    society_id: societyId,
+    role: { $in: ['resident', 'admin', 'manager'] },
+    is_active: true,
+    flat_no: { $exists: true, $ne: null }
+  }).select('_id name email flat_no');
+
+  let created = 0;
+  let skipped = 0;
+  let errors = 0;
+
+  for (const user of users) {
+    try {
+      const existing = await Maintenance.findOne({
+        society_id: societyId,
+        user_id: user._id,
+        month,
+        year
+      });
+
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      await Maintenance.create({
+        society_id: societyId,
+        user_id: user._id,
+        flat_no: user.flat_no,
+        month,
+        year,
+        amount: 1000,
+        late_fee: 0,
+        total_amount: 1000,
+        due_date: dueDate,
+        status: 'pending'
+      });
+
+      created++;
+
+      if (sendEmail) {
         try {
           await emailService.sendMaintenanceInvoice({
             email: user.email,
@@ -76,88 +66,218 @@ const generateMonthlyMaintenance = async () => {
             due_date: dueDate
           });
         } catch (emailErr) {
-          console.error(`Failed to send invoice email to ${user.email}:`, emailErr.message);
+          console.error(
+            `Failed invoice email to ${user.email}:`,
+            emailErr.message
+          );
         }
-        
+      }
+    } catch (err) {
+      console.error(
+        `Error creating maintenance for flat ${user.flat_no}:`,
+        err.message
+      );
+      errors++;
+    }
+  }
+
+  return {
+    society_id: societyId.toString(),
+    created,
+    skipped,
+    errors,
+    month,
+    year
+  };
+};
+
+
+/**
+ * Generate monthly maintenance for ALL active societies
+ * Runs on 1st of every month at midnight
+ */
+const generateMonthlyMaintenance = async () => {
+  try {
+    const now = new Date();
+
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+
+    console.log(
+      `📅 Generating maintenance for all societies - ${month}/${year}`
+    );
+
+    const societies = await Society.find({
+      is_active: true
+    }).select('_id name society_code');
+
+    console.log(
+      `🏢 Found ${societies.length} active societies`
+    );
+
+    let totalCreated = 0;
+    let totalSkipped = 0;
+    let totalErrors = 0;
+
+    const societyResults = [];
+
+    for (const society of societies) {
+      try {
+        console.log(
+          `🏢 Processing ${society.name} (${society.society_code})...`
+        );
+
+        const result =
+          await generateMaintenanceForSociety(
+            society._id,
+            month,
+            year,
+            true
+          );
+
+        totalCreated += result.created;
+        totalSkipped += result.skipped;
+        totalErrors += result.errors;
+
+        societyResults.push({
+          society_id: society._id,
+          society_name: society.name,
+          society_code: society.society_code,
+          ...result
+        });
       } catch (err) {
-        console.error(`Error creating maintenance for flat ${user.flat_no}:`, err.message);
-        errors++;
+        console.error(
+          `Error processing society ${society.society_code}:`,
+          err.message
+        );
+
+        totalErrors++;
       }
     }
-    
-    console.log(`📊 Monthly maintenance generation complete:`);
-    console.log(`   Created: ${created}`);
-    console.log(`   Skipped: ${skipped}`);
-    console.log(`   Errors: ${errors}`);
-    
-    return { created, skipped, errors, month, year };
-    
+
+    console.log(
+      `📊 Monthly maintenance generation complete`
+    );
+
+    console.log(
+      `   Created: ${totalCreated}`
+    );
+
+    console.log(
+      `   Skipped: ${totalSkipped}`
+    );
+
+    console.log(
+      `   Errors: ${totalErrors}`
+    );
+
+    return {
+      created: totalCreated,
+      skipped: totalSkipped,
+      errors: totalErrors,
+      month,
+      year,
+      societies: societyResults
+    };
   } catch (error) {
-    console.error('❌ Error in generateMonthlyMaintenance:', error);
+    console.error(
+      '❌ Error in generateMonthlyMaintenance:',
+      error
+    );
+
     throw error;
   }
 };
 
+
 /**
- * Manually trigger maintenance generation for a specific month/year
- * Used for testing or catching up on missed months
+ * Generate maintenance for ALL active societies
+ * for a specific month/year
  */
-const generateMaintenanceForMonth = async (month, year) => {
+const generateMaintenanceForMonth = async (
+  month,
+  year
+) => {
   try {
-    const dueDate = new Date(year, month - 1, 18); // 18th of specified month
-    
-    console.log(`📅 Generating maintenance records for ${month}/${year}...`);
-    
-    const users = await User.find({
-      role: { $in: ['resident', 'admin', 'manager'] },
-      flat_no: { $exists: true, $ne: null }
-    }).select('_id name email flat_no');
-    
-    let created = 0;
-    let skipped = 0;
-    let errors = 0;
-    
-    for (const user of users) {
+    month = parseInt(month);
+    year = parseInt(year);
+
+    if (
+      !month ||
+      month < 1 ||
+      month > 12 ||
+      !year
+    ) {
+      throw new Error(
+        'Valid month and year are required'
+      );
+    }
+
+    console.log(
+      `📅 Generating maintenance for all societies - ${month}/${year}`
+    );
+
+    const societies = await Society.find({
+      is_active: true
+    }).select('_id name society_code');
+
+    let totalCreated = 0;
+    let totalSkipped = 0;
+    let totalErrors = 0;
+
+    const societyResults = [];
+
+    for (const society of societies) {
       try {
-        const existing = await Maintenance.findOne({
-          flat_no: user.flat_no,
-          month,
-          year
+        const result =
+          await generateMaintenanceForSociety(
+            society._id,
+            month,
+            year,
+            false
+          );
+
+        totalCreated += result.created;
+        totalSkipped += result.skipped;
+        totalErrors += result.errors;
+
+        societyResults.push({
+          society_id: society._id,
+          society_name: society.name,
+          society_code: society.society_code,
+          ...result
         });
-        
-        if (existing) {
-          skipped++;
-          continue;
-        }
-        
-        await Maintenance.create({
-          user_id: user._id,
-          flat_no: user.flat_no,
-          month,
-          year,
-          amount: 1000,
-          late_fee: 0,
-          total_amount: 1000,
-          due_date: dueDate,
-          status: 'pending'
-        });
-        
-        created++;
-        
       } catch (err) {
-        errors++;
+        console.error(
+          `Error processing society ${society.society_code}:`,
+          err.message
+        );
+
+        totalErrors++;
       }
     }
-    
-    return { created, skipped, errors, month, year };
-    
+
+    return {
+      created: totalCreated,
+      skipped: totalSkipped,
+      errors: totalErrors,
+      month,
+      year,
+      societies: societyResults
+    };
   } catch (error) {
-    console.error('Error in generateMaintenanceForMonth:', error);
+    console.error(
+      'Error in generateMaintenanceForMonth:',
+      error
+    );
+
     throw error;
   }
 };
+
 
 module.exports = {
   generateMonthlyMaintenance,
-  generateMaintenanceForMonth
+  generateMaintenanceForMonth,
+  generateMaintenanceForSociety
 };

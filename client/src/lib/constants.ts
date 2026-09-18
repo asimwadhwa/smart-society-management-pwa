@@ -48,7 +48,7 @@ export const ASSET_STATUS = {
 } as const;
 
 // Society Info
-export const SOCIETY_NAME = 'Asim Wadhwa';
+export const SOCIETY_NAME = 'Swapna Ganga';
 export const SOCIETY_TAGLINE = 'Society Management';
 
 // Flat numbers list (4 floors, 10 flats each)

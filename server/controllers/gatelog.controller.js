@@ -7,34 +7,53 @@ const GateLog = require('../models/GateLog');
  */
 exports.createEntry = async (req, res, next) => {
   try {
-    const { visitor_name, flat_no_visiting, purpose, vehicle_number } = req.body;
+    const {
+      visitor_name,
+      flat_no_visiting,
+      purpose,
+      vehicle_number
+    } = req.body;
+
+    const user = req.user;
+
+    if (!user.society_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not associated with any society'
+      });
+    }
 
     // Validate required fields
     if (!visitor_name || !flat_no_visiting || !purpose) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide visitor_name, flat_no_visiting, and purpose'
+        message:
+          'Please provide visitor_name, flat_no_visiting, and purpose'
       });
     }
 
     // Create gate log entry
     const entry = await GateLog.create({
+      society_id: user.society_id,
       visitor_name: visitor_name.trim(),
       flat_no_visiting,
       purpose: purpose.trim(),
-      vehicle_number: vehicle_number ? vehicle_number.trim() : null,
-      logged_by: req.user._id,
+      vehicle_number: vehicle_number
+        ? vehicle_number.trim()
+        : null,
+      logged_by: user._id,
       in_time: new Date()
     });
 
     // Populate logged_by for response
     await entry.populate('logged_by', 'name');
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'Visitor entry logged successfully',
       data: entry
     });
+
   } catch (error) {
     next(error);
   }
@@ -47,14 +66,24 @@ exports.createEntry = async (req, res, next) => {
  */
 exports.getTodayEntries = async (req, res, next) => {
   try {
+    const user = req.user;
+
+    if (!user.society_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not associated with any society'
+      });
+    }
+
     // Get start and end of today
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const entries = await GateLog.find({
+      society_id: user.society_id,
       in_time: {
         $gte: today,
         $lt: tomorrow
@@ -70,11 +99,12 @@ exports.getTodayEntries = async (req, res, next) => {
       exited: entries.filter(e => e.out_time).length
     };
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: entries,
       stats
     });
+
   } catch (error) {
     next(error);
   }
@@ -87,7 +117,20 @@ exports.getTodayEntries = async (req, res, next) => {
  */
 exports.markOutTime = async (req, res, next) => {
   try {
-    const entry = await GateLog.findById(req.params.id);
+    const user = req.user;
+
+    if (!user.society_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not associated with any society'
+      });
+    }
+
+    // Find entry only inside current society
+    const entry = await GateLog.findOne({
+      _id: req.params.id,
+      society_id: user.society_id
+    });
 
     if (!entry) {
       return res.status(404).json({
@@ -106,15 +149,17 @@ exports.markOutTime = async (req, res, next) => {
 
     // Update out time
     entry.out_time = new Date();
+
     await entry.save();
 
     await entry.populate('logged_by', 'name');
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Visitor marked as exited',
       data: entry
     });
+
   } catch (error) {
     next(error);
   }
@@ -127,24 +172,39 @@ exports.markOutTime = async (req, res, next) => {
  */
 exports.getHistory = async (req, res, next) => {
   try {
-    const { 
-      page = 1, 
-      limit = 20, 
+    const {
+      page = 1,
+      limit = 20,
       date,
-      flat_no 
+      flat_no
     } = req.query;
 
-    const query = {};
+    const user = req.user;
+
+    if (!user.society_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is not associated with any society'
+      });
+    }
+
+    // Always restrict history to current society
+    const query = {
+      society_id: user.society_id
+    };
 
     // Filter by date if provided
     if (date) {
       const startDate = new Date(date);
       startDate.setHours(0, 0, 0, 0);
-      
+
       const endDate = new Date(startDate);
       endDate.setDate(endDate.getDate() + 1);
 
-      query.in_time = { $gte: startDate, $lt: endDate };
+      query.in_time = {
+        $gte: startDate,
+        $lt: endDate
+      };
     }
 
     // Filter by flat number if provided
@@ -152,26 +212,30 @@ exports.getHistory = async (req, res, next) => {
       query.flat_no_visiting = flat_no;
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const currentPage = parseInt(page);
+    const currentLimit = parseInt(limit);
+
+    const skip = (currentPage - 1) * currentLimit;
 
     const entries = await GateLog.find(query)
       .populate('logged_by', 'name')
       .sort({ in_time: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(currentLimit);
 
     const total = await GateLog.countDocuments(query);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: entries,
       pagination: {
-        current: parseInt(page),
-        pages: Math.ceil(total / parseInt(limit)),
+        current: currentPage,
+        pages: Math.ceil(total / currentLimit),
         total,
-        limit: parseInt(limit)
+        limit: currentLimit
       }
     });
+
   } catch (error) {
     next(error);
   }

@@ -1,21 +1,58 @@
 const express = require('express');
+
 const router = express.Router();
+
 const paymentController = require('../controllers/payment.controller');
-const { authenticate, authorize } = require('../middleware/auth.middleware');
 
-// POST /api/payment/webhook - Razorpay webhook handler (no auth - verified by signature)
-router.post('/webhook', paymentController.handleWebhook);
+const {
+  authenticate
+} = require('../middleware/auth.middleware');
 
-// Protected routes
+// ============================================================
+// RAZORPAY WEBHOOK
+// No JWT authentication
+// Signature verification is handled by controller
+// ============================================================
+
+router.post(
+  '/webhook',
+  paymentController.handleWebhook
+);
+
+// ============================================================
+// PROTECTED PAYMENT ROUTES
+// ============================================================
+
 router.use(authenticate);
 
-// POST /api/payment/verify - Verify Razorpay payment after frontend callback
-router.post('/verify', paymentController.verifyPayment);
+// ============================================================
+// VERIFY PAYMENT
+// ============================================================
 
-// GET /api/payment/:paymentId - Get payment details
-router.get('/:paymentId', paymentController.getPaymentDetails);
+// POST /api/payment/verify
+router.post(
+  '/verify',
+  paymentController.verifyPayment
+);
 
-// GET /api/payment/status/:orderId - Get payment status from Razorpay
-router.get('/status/:orderId', paymentController.getPaymentStatus);
+// ============================================================
+// PAYMENT DETAILS
+// ============================================================
+
+// GET /api/payment/:paymentId
+router.get(
+  '/:paymentId',
+  paymentController.getPaymentDetails
+);
+
+// ============================================================
+// PAYMENT STATUS
+// ============================================================
+
+// GET /api/payment/status/:orderId
+router.get(
+  '/status/:orderId',
+  paymentController.getPaymentStatus
+);
 
 module.exports = router;

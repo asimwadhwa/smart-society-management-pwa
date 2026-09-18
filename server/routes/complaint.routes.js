@@ -1,27 +1,69 @@
 const express = require('express');
-const router = express.Router();
-const complaintController = require('../controllers/complaint.controller');
-const { authenticate, authorize } = require('../middleware/auth.middleware');
 
-// All routes require authentication
+const router = express.Router();
+
+const complaintController = require('../controllers/complaint.controller');
+
+const {
+  authenticate,
+  authorize
+} = require('../middleware/auth.middleware');
+
+// ============================================================
+// AUTHENTICATION
+// ============================================================
+
 router.use(authenticate);
 
-// POST /api/complaints - Create new complaint
-router.post('/', complaintController.createComplaint);
+// ============================================================
+// COMPLAINTS
+// ============================================================
 
-// GET /api/complaints - Get user's complaints
-router.get('/', complaintController.getUserComplaints);
+// POST /api/complaints
+// All authenticated society users
+router.post(
+  '/',
+  complaintController.createComplaint
+);
 
-// GET /api/complaints/all - Get all complaints (Manager, Admin)
-router.get('/all', authorize('manager', 'admin'), complaintController.getAllComplaints);
+// GET /api/complaints
+// Current user's complaints
+router.get(
+  '/',
+  complaintController.getUserComplaints
+);
 
-// GET /api/complaints/:id - Get complaint details
-router.get('/:id', complaintController.getComplaintById);
+// GET /api/complaints/all
+// Manager/Admin - current society only
+router.get(
+  '/all',
+  authorize('manager', 'admin'),
+  complaintController.getAllComplaints
+);
 
-// PUT /api/complaints/:id/status - Update complaint status (Manager, Admin)
-router.put('/:id/status', authorize('manager', 'admin'), complaintController.updateComplaintStatus);
+// GET /api/complaints/:id
+// Current society complaint
+router.get(
+  '/:id',
+  complaintController.getComplaintById
+);
 
-// POST /api/complaints/upload-url - Get ImageKit upload URL
-router.post('/upload-url', complaintController.getUploadUrl);
+// PUT /api/complaints/:id/status
+// Manager/Admin - current society only
+router.put(
+  '/:id/status',
+  authorize('manager', 'admin'),
+  complaintController.updateComplaintStatus
+);
+
+// ============================================================
+// IMAGEKIT
+// ============================================================
+
+// POST /api/complaints/upload-url
+router.post(
+  '/upload-url',
+  complaintController.getUploadUrl
+);
 
 module.exports = router;

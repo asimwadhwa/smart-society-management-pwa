@@ -2,7 +2,7 @@ const express = require('express');
 
 const router = express.Router();
 
-const assetController = require('../controllers/asset.controller');
+const societyController = require('../controllers/society.controller');
 
 const {
   authenticate,
@@ -10,76 +10,97 @@ const {
 } = require('../middleware/auth.middleware');
 
 // ============================================================
-// ALL ASSET ROUTES REQUIRE LOGIN
+// AUTHENTICATION
 // ============================================================
+
 router.use(authenticate);
 
 // ============================================================
-// GET ALL ASSETS
-// Manager / Admin / Resident
+// SUPER ADMIN ONLY
 // ============================================================
-router.get(
-  '/',
-  assetController.getAllAssets
+
+router.use(
+  authorize('super_admin')
 );
 
 // ============================================================
-// GET SINGLE ASSET
-// Manager / Admin / Resident
+// CREATE SOCIETY
+// POST /api/societies
 // ============================================================
-router.get(
-  '/:id',
-  assetController.getAssetById
-);
 
-// ============================================================
-// CREATE ASSET
-// Manager only
-// ============================================================
 router.post(
   '/',
-  authorize('manager'),
-  assetController.createAsset
+  societyController.createSociety
 );
 
 // ============================================================
-// UPDATE ASSET
-// Manager only
+// GET ALL SOCIETIES
+// GET /api/societies
 // ============================================================
+
+router.get(
+  '/',
+  societyController.getAllSocieties
+);
+
+// ============================================================
+// SOCIETY STATS
+// GET /api/societies/:id/stats
+// ============================================================
+
+router.get(
+  '/:id/stats',
+  societyController.getSocietyStats
+);
+
+// ============================================================
+// SOCIETY MANAGER
+// GET /api/societies/:id/manager
+// ============================================================
+
+router.get(
+  '/:id/manager',
+  societyController.getSocietyManager
+);
+
+// ============================================================
+// ACTIVATE SOCIETY
+// PUT /api/societies/:id/activate
+// ============================================================
+
+router.put(
+  '/:id/activate',
+  societyController.activateSociety
+);
+
+// ============================================================
+// GET SOCIETY BY ID
+// GET /api/societies/:id
+// ============================================================
+
+router.get(
+  '/:id',
+  societyController.getSocietyById
+);
+
+// ============================================================
+// UPDATE SOCIETY
+// PUT /api/societies/:id
+// ============================================================
+
 router.put(
   '/:id',
-  authorize('manager'),
-  assetController.updateAsset
+  societyController.updateSociety
 );
 
 // ============================================================
-// UPDATE ASSET STATUS
-// Manager / Admin
+// DEACTIVATE SOCIETY
+// DELETE /api/societies/:id
 // ============================================================
-router.put(
-  '/:id/status',
-  authorize('manager', 'admin'),
-  assetController.updateAssetStatus
-);
 
-// ============================================================
-// ADD SERVICE ENTRY
-// Manager only
-// ============================================================
-router.post(
-  '/:id/service',
-  authorize('manager'),
-  assetController.logServiceEntry
-);
-
-// ============================================================
-// DELETE ASSET
-// Manager only
-// ============================================================
 router.delete(
   '/:id',
-  authorize('manager'),
-  assetController.deleteAsset
+  societyController.deactivateSociety
 );
 
 module.exports = router;

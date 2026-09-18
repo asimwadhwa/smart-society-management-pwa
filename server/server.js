@@ -22,6 +22,7 @@ const emergencyRoutes = require('./routes/emergency.routes');
 const complaintRoutes = require('./routes/complaint.routes');
 const gatelogRoutes = require('./routes/gatelog.routes');
 const assetRoutes = require('./routes/asset.routes');
+const societyRoutes = require('./routes/society.routes');
 
 // Import cron jobs
 const initCronJobs = require('./jobs');
@@ -146,6 +147,8 @@ app.use('/api/complaints', complaintRoutes);
 app.use('/api/gatelog', gatelogRoutes);
 
 app.use('/api/assets', assetRoutes);
+
+app.use('/api/societies', societyRoutes);
 
 // ============================================
 // 404 HANDLER

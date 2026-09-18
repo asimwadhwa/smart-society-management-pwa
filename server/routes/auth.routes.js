@@ -1,33 +1,94 @@
 const express = require('express');
+
 const router = express.Router();
+
 const authController = require('../controllers/auth.controller');
-const { authenticate } = require('../middleware/auth.middleware');
 
-// POST /api/auth/manager-setup - First-time manager registration
-router.post('/manager-setup', authController.managerSetup);
+const {
+  authenticate,
+  authorize
+} = require('../middleware/auth.middleware');
 
-// GET /api/auth/manager-exists - Check if manager exists
-router.get('/manager-exists', authController.checkManagerExists);
+// ============================================================
+// SUPER ADMIN
+// ============================================================
 
-// POST /api/auth/register - Register new resident
-router.post('/register', authController.register);
+// One-time Super Admin registration
+router.post(
+  '/super-admin-setup',
+  authController.superAdminSetup
+);
 
-// POST /api/auth/login - Login user
-router.post('/login', authController.login);
+// ============================================================
+// MANAGER
+// ============================================================
 
-// POST /api/auth/logout - Logout user
-router.post('/logout', authController.logout);
+// Only Super Admin can create a Manager
+router.post(
+  '/manager-setup',
+  authenticate,
+  authorize('super_admin'),
+  authController.managerSetup
+);
 
-// GET /api/auth/me - Get current user (Protected)
-router.get('/me', authenticate, authController.getCurrentUser);
+// Check Manager for a specific society
+router.get(
+  '/manager-exists',
+  authenticate,
+  authorize('super_admin'),
+  authController.checkManagerExists
+);
 
-// POST /api/auth/forgot-password - Send OTP to email
-router.post('/forgot-password', authController.forgotPassword);
+// ============================================================
+// RESIDENT
+// ============================================================
 
-// POST /api/auth/verify-otp - Verify OTP
-router.post('/verify-otp', authController.verifyOTP);
+router.post(
+  '/register',
+  authController.register
+);
 
-// POST /api/auth/reset-password - Reset password
-router.post('/reset-password', authController.resetPassword);
+// ============================================================
+// LOGIN / LOGOUT
+// ============================================================
+
+router.post(
+  '/login',
+  authController.login
+);
+
+router.post(
+  '/logout',
+  authController.logout
+);
+
+// ============================================================
+// CURRENT USER
+// ============================================================
+
+router.get(
+  '/me',
+  authenticate,
+  authController.getCurrentUser
+);
+
+// ============================================================
+// PASSWORD RESET
+// ============================================================
+
+router.post(
+  '/forgot-password',
+  authController.forgotPassword
+);
+
+router.post(
+  '/verify-otp',
+  authController.verifyOTP
+);
+
+router.post(
+  '/reset-password',
+  authController.resetPassword
+);
 
 module.exports = router;

@@ -46,7 +46,7 @@ export const generateReceiptPDF = (data: ReceiptData) => {
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
-  doc.text('Asim Wadhwa', pageWidth / 2, 20, { align: 'center' });
+  doc.text('Swapna Ganga', pageWidth / 2, 20, { align: 'center' });
   
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');

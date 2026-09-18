@@ -1,27 +1,157 @@
 const express = require('express');
-const router = express.Router();
-const userController = require('../controllers/user.controller');
-const { authenticate, authorize } = require('../middleware/auth.middleware');
 
-// All routes require authentication
+const router = express.Router();
+
+const userController =
+  require('../controllers/user.controller');
+
+const {
+  authenticate,
+  authorize
+} = require('../middleware/auth.middleware');
+
+// ============================================================
+// AUTHENTICATION
+// ============================================================
+
 router.use(authenticate);
 
-// GET /api/users - Get all users (Manager, Admin)
-router.get('/', authorize('manager', 'admin'), userController.getAllUsers);
+// ============================================================
+// SUPER ADMIN USER MANAGEMENT
+// ============================================================
 
-// GET /api/users/flats/available - Get unregistered flats
-router.get('/flats/available', userController.getAvailableFlats);
+// GET /api/users/society/:societyId
+// Get all users of a particular society
+router.get(
+  '/society/:societyId',
+  authorize('super_admin'),
+  userController.getUsersBySociety
+);
 
-// GET /api/users/:id - Get user by ID (Manager, Admin)
-router.get('/:id', authorize('manager', 'admin'), userController.getUserById);
+// ============================================================
 
-// PUT /api/users/:id/role - Update user role (Manager only)
-router.put('/:id/role', authorize('manager'), userController.updateUserRole);
+// GET /api/users/society/:societyId/stats
+// Get user statistics of a particular society
+router.get(
+  '/society/:societyId/stats',
+  authorize('super_admin'),
+  userController.getSocietyUserStats
+);
 
-// POST /api/users/watchman - Create watchman account (Manager only)
-router.post('/watchman', authorize('manager'), userController.createWatchman);
+// ============================================================
+// ALL USERS
+// ============================================================
 
-// DELETE /api/users/:id - Deactivate user (Manager only)
-router.delete('/:id', authorize('manager'), userController.deleteUser);
+// GET /api/users
+//
+// Manager/Admin:
+//   Own society users
+//
+// Super Admin:
+//   All users
+//   Optional ?society_id=...
+router.get(
+  '/',
+  authorize(
+    'super_admin',
+    'manager',
+    'admin'
+  ),
+  userController.getAllUsers
+);
+
+// ============================================================
+// AVAILABLE FLATS
+// ============================================================
+
+// GET /api/users/flats/available
+router.get(
+  '/flats/available',
+  authorize(
+    'manager',
+    'admin'
+  ),
+  userController.getAvailableFlats
+);
+
+// ============================================================
+// USER BY ID
+// ============================================================
+
+// GET /api/users/:id
+router.get(
+  '/:id',
+  authorize(
+    'super_admin',
+    'manager',
+    'admin'
+  ),
+  userController.getUserById
+);
+
+// ============================================================
+// ROLE MANAGEMENT
+// ============================================================
+
+// PUT /api/users/:id/role
+//
+// Manager/Admin:
+//   Resident <-> Admin
+//
+// Super Admin:
+//   Resident <-> Admin
+router.put(
+  '/:id/role',
+  authorize(
+    'super_admin',
+    'manager',
+    'admin'
+  ),
+  userController.updateUserRole
+);
+
+// ============================================================
+// WATCHMAN
+// ============================================================
+
+// Existing functionality preserved
+router.post(
+  '/watchman',
+  authorize(
+    'manager',
+    'admin'
+  ),
+  userController.createWatchman
+);
+
+// ============================================================
+// DEACTIVATE USER
+// ============================================================
+
+// DELETE /api/users/:id
+router.delete(
+  '/:id',
+  authorize(
+    'super_admin',
+    'manager',
+    'admin'
+  ),
+  userController.deleteUser
+);
+
+// ============================================================
+// ACTIVATE USER
+// ============================================================
+
+// PUT /api/users/:id/activate
+router.put(
+  '/:id/activate',
+  authorize(
+    'super_admin',
+    'manager',
+    'admin'
+  ),
+  userController.activateUser
+);
 
 module.exports = router;
