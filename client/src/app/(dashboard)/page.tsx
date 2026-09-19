@@ -586,15 +586,6 @@ export default function DashboardPage() {
     };
 
 
-  // ==========================================================
-  // SCROLL TO SOCIETIES
-  // ==========================================================
-
-  const handleOpenSocieties = () => {
-    router.push('/admin/societies');
-  };
-
-
   const handleOpenUsers =
     () => {
       router.push('/admin/users');
@@ -1992,43 +1983,45 @@ export default function DashboardPage() {
 
               {/* Societies */}
 
-              <Button
-                type="button"
-                onClick={
-                  handleOpenSocieties
-                }
-                variant="secondary"
-                className="
-                  w-full
-                  h-auto
-                  py-4
-                  flex
-                  flex-col
-                  gap-2
-                  bg-slate-700/50
-                  hover:bg-slate-700
-                  border-0
-                  text-white
-                "
+              <Link
+                href="/admin/societies"
+                className="block w-full"
               >
-
-                <Building2
+                <Button
+                  type="button"
+                  variant="secondary"
                   className="
-                    w-5
-                    h-5
-                  "
-                />
-
-                <span
-                  className="
-                    text-xs
-                    font-medium
+                    w-full
+                    h-auto
+                    py-4
+                    flex
+                    flex-col
+                    gap-2
+                    bg-slate-700/50
+                    hover:bg-slate-700
+                    border-0
+                    text-white
                   "
                 >
-                  Societies
-                </span>
 
-              </Button>
+                  <Building2
+                    className="
+                      w-5
+                      h-5
+                    "
+                  />
+
+                  <span
+                    className="
+                      text-xs
+                      font-medium
+                    "
+                  >
+                    Societies
+                  </span>
+
+                </Button>
+              </Link>
 
 
               {/* Users */}
