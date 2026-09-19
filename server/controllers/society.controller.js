@@ -35,12 +35,19 @@ exports.createSociety = async (req, res, next) => {
     }
 
     const cleanName = name.trim();
-    const cleanCode =
-      society_code.trim().toUpperCase();
+    const cleanCode = society_code.trim().toUpperCase();
     const cleanAddress = address.trim();
     const cleanCity = city.trim();
     const cleanState = state.trim();
     const cleanContact = contact_number.trim();
+
+    if (!/^[6-9]\d{9}$/.test(cleanContact)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Please enter a valid 10-digit contact number'
+      });
+    }
 
     const existingSociety =
       await Society.findOne({
@@ -192,7 +199,10 @@ exports.updateSociety = async (
     }
 
     if (name !== undefined) {
-      if (!name.trim()) {
+      if (
+        typeof name !== 'string' ||
+        !name.trim()
+      ) {
         return res.status(400).json({
           success: false,
           message:
@@ -200,12 +210,14 @@ exports.updateSociety = async (
         });
       }
 
-      society.name =
-        name.trim();
+      society.name = name.trim();
     }
 
     if (society_code !== undefined) {
-      if (!society_code.trim()) {
+      if (
+        typeof society_code !== 'string' ||
+        !society_code.trim()
+      ) {
         return res.status(400).json({
           success: false,
           message:
@@ -221,27 +233,51 @@ exports.updateSociety = async (
 
     if (address !== undefined) {
       society.address =
-        address.trim();
+        String(address).trim();
     }
 
     if (city !== undefined) {
       society.city =
-        city.trim();
+        String(city).trim();
     }
 
     if (state !== undefined) {
       society.state =
-        state.trim();
+        String(state).trim();
     }
 
     if (contact_number !== undefined) {
+      const cleanContact =
+        String(contact_number).trim();
+
+      if (
+        !/^[6-9]\d{9}$/.test(
+          cleanContact
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Please enter a valid 10-digit contact number'
+        });
+      }
+
       society.contact_number =
-        contact_number.trim();
+        cleanContact;
     }
 
     if (is_active !== undefined) {
-      society.is_active =
-        Boolean(is_active);
+      if (typeof is_active === 'boolean') {
+        society.is_active = is_active;
+      } else if (
+        String(is_active).toLowerCase() === 'true'
+      ) {
+        society.is_active = true;
+      } else if (
+        String(is_active).toLowerCase() === 'false'
+      ) {
+        society.is_active = false;
+      }
     }
 
     await society.save();
@@ -424,22 +460,47 @@ exports.getSocietyStats = async (
         role: 'watchman'
       });
 
+    /*
+     * IMPORTANT:
+     * Frontend Society page expects:
+     *
+     * stats.totalUsers
+     * stats.activeUsers
+     * stats.inactiveUsers
+     * stats.managers
+     * stats.admins
+     * stats.residents
+     * stats.watchmen
+     *
+     * So return exactly this structure.
+     */
+
     return res.status(200).json({
       success: true,
+
       data: {
+        totalUsers,
+        activeUsers,
+        inactiveUsers,
+        managers,
+        admins,
+        residents,
+        watchmen,
+
+        // Keep detailed structure also available
         society: {
           _id: society._id,
           name: society.name,
-          society_code:
-            society.society_code,
-          is_active:
-            society.is_active
+          society_code: society.society_code,
+          is_active: society.is_active
         },
+
         users: {
           total: totalUsers,
           active: activeUsers,
           inactive: inactiveUsers
         },
+
         roles: {
           manager: managers,
           admin: admins,
@@ -489,7 +550,7 @@ exports.getSocietyManager = async (
         society_id: societyId,
         role: 'manager'
       }).select(
-        '-password_hash -otp -otp_expires'
+        '-password_hash -reset_password_otp -reset_password_otp_expires'
       );
 
     if (!manager) {
