@@ -1,8 +1,10 @@
 const express = require('express');
 
-const router = express.Router();
+const router =
+  express.Router();
 
-const societyController = require('../controllers/society.controller');
+const societyController =
+  require('../controllers/society.controller');
 
 const {
   authenticate,
@@ -13,7 +15,9 @@ const {
 // AUTHENTICATION
 // ============================================================
 
-router.use(authenticate);
+router.use(
+  authenticate
+);
 
 // ============================================================
 // SUPER ADMIN ONLY
@@ -54,13 +58,41 @@ router.get(
 );
 
 // ============================================================
-// SOCIETY MANAGER
+// GET SOCIETY MANAGER
 // GET /api/societies/:id/manager
 // ============================================================
 
 router.get(
   '/:id/manager',
   societyController.getSocietyManager
+);
+
+// ============================================================
+// ASSIGN / CHANGE MANAGER
+//
+// PUT /api/societies/:id/manager
+//
+// Existing user:
+// { user_id }
+//
+// New manager:
+// { name, email, password, phone, flat_no }
+// ============================================================
+
+router.put(
+  '/:id/manager',
+  societyController.assignOrReplaceManager
+);
+
+// ============================================================
+// REMOVE MANAGER
+//
+// DELETE /api/societies/:id/manager
+// ============================================================
+
+router.delete(
+  '/:id/manager',
+  societyController.removeSocietyManager
 );
 
 // ============================================================

@@ -1,14 +1,31 @@
 const Society = require('../models/Society');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 
-/**
- * ============================================================
- * CREATE SOCIETY
- * ============================================================
- * POST /api/societies
- * Super Admin only
- */
-exports.createSociety = async (req, res, next) => {
+// ============================================================
+// HELPERS
+// ============================================================
+
+const isValidObjectId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
+
+const cleanString = (value) => {
+  return typeof value === 'string'
+    ? value.trim()
+    : '';
+};
+
+// ============================================================
+// CREATE SOCIETY
+// POST /api/societies
+// ============================================================
+
+exports.createSociety = async (
+  req,
+  res,
+  next
+) => {
   try {
     const {
       name,
@@ -34,14 +51,45 @@ exports.createSociety = async (req, res, next) => {
       });
     }
 
-    const cleanName = name.trim();
-    const cleanCode = society_code.trim().toUpperCase();
-    const cleanAddress = address.trim();
-    const cleanCity = city.trim();
-    const cleanState = state.trim();
-    const cleanContact = contact_number.trim();
+    const cleanName =
+      cleanString(name);
 
-    if (!/^[6-9]\d{9}$/.test(cleanContact)) {
+    const cleanCode =
+      cleanString(
+        society_code
+      ).toUpperCase();
+
+    const cleanAddress =
+      cleanString(address);
+
+    const cleanCity =
+      cleanString(city);
+
+    const cleanState =
+      cleanString(state);
+
+    const cleanContact =
+      cleanString(contact_number);
+
+    if (
+      !cleanName ||
+      !cleanCode ||
+      !cleanAddress ||
+      !cleanCity ||
+      !cleanState
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Society details cannot be empty'
+      });
+    }
+
+    if (
+      !/^[6-9]\d{9}$/.test(
+        cleanContact
+      )
+    ) {
       return res.status(400).json({
         success: false,
         message:
@@ -51,7 +99,8 @@ exports.createSociety = async (req, res, next) => {
 
     const existingSociety =
       await Society.findOne({
-        society_code: cleanCode
+        society_code:
+          cleanCode
       });
 
     if (existingSociety) {
@@ -69,7 +118,8 @@ exports.createSociety = async (req, res, next) => {
         address: cleanAddress,
         city: cleanCity,
         state: cleanState,
-        contact_number: cleanContact,
+        contact_number:
+          cleanContact,
         is_active: true
       });
 
@@ -82,7 +132,9 @@ exports.createSociety = async (req, res, next) => {
 
   } catch (error) {
 
-    if (error.code === 11000) {
+    if (
+      error.code === 11000
+    ) {
       return res.status(400).json({
         success: false,
         message:
@@ -94,479 +146,1151 @@ exports.createSociety = async (req, res, next) => {
   }
 };
 
+// ============================================================
+// GET ALL SOCIETIES
+// GET /api/societies
+// ============================================================
 
-/**
- * ============================================================
- * GET ALL SOCIETIES
- * ============================================================
- * GET /api/societies
- * Super Admin only
- */
-exports.getAllSocieties = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const societies =
-      await Society.find()
-        .sort({
-          created_at: -1
-        });
+exports.getAllSocieties =
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
 
-    return res.status(200).json({
-      success: true,
-      data: societies
-    });
+      const societies =
+        await Society.find()
+          .sort({
+            created_at: -1
+          });
 
-  } catch (error) {
-    next(error);
-  }
-};
-
-
-/**
- * ============================================================
- * GET SOCIETY BY ID
- * ============================================================
- * GET /api/societies/:id
- * Super Admin only
- */
-exports.getSocietyById = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const society =
-      await Society.findById(
-        req.params.id
-      );
-
-    if (!society) {
-      return res.status(404).json({
-        success: false,
-        message:
-          'Society not found'
+      return res.status(200).json({
+        success: true,
+        data: societies
       });
+
+    } catch (error) {
+      next(error);
     }
+  };
 
-    return res.status(200).json({
-      success: true,
-      data: society
-    });
+// ============================================================
+// GET SOCIETY BY ID
+// GET /api/societies/:id
+// ============================================================
 
-  } catch (error) {
-    next(error);
-  }
-};
-
-
-/**
- * ============================================================
- * UPDATE SOCIETY
- * ============================================================
- * PUT /api/societies/:id
- * Super Admin only
- */
-exports.updateSociety = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const {
-      name,
-      society_code,
-      address,
-      city,
-      state,
-      contact_number,
-      is_active
-    } = req.body;
-
-    const society =
-      await Society.findById(
-        req.params.id
-      );
-
-    if (!society) {
-      return res.status(404).json({
-        success: false,
-        message:
-          'Society not found'
-      });
-    }
-
-    if (name !== undefined) {
-      if (
-        typeof name !== 'string' ||
-        !name.trim()
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'Society name cannot be empty'
-        });
-      }
-
-      society.name = name.trim();
-    }
-
-    if (society_code !== undefined) {
-      if (
-        typeof society_code !== 'string' ||
-        !society_code.trim()
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'Society code cannot be empty'
-        });
-      }
-
-      society.society_code =
-        society_code
-          .trim()
-          .toUpperCase();
-    }
-
-    if (address !== undefined) {
-      society.address =
-        String(address).trim();
-    }
-
-    if (city !== undefined) {
-      society.city =
-        String(city).trim();
-    }
-
-    if (state !== undefined) {
-      society.state =
-        String(state).trim();
-    }
-
-    if (contact_number !== undefined) {
-      const cleanContact =
-        String(contact_number).trim();
+exports.getSocietyById =
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
 
       if (
-        !/^[6-9]\d{9}$/.test(
-          cleanContact
+        !isValidObjectId(
+          req.params.id
         )
       ) {
         return res.status(400).json({
           success: false,
           message:
-            'Please enter a valid 10-digit contact number'
+            'Invalid society ID'
         });
       }
 
-      society.contact_number =
-        cleanContact;
-    }
+      const society =
+        await Society.findById(
+          req.params.id
+        );
 
-    if (is_active !== undefined) {
-      if (typeof is_active === 'boolean') {
-        society.is_active = is_active;
-      } else if (
-        String(is_active).toLowerCase() === 'true'
-      ) {
-        society.is_active = true;
-      } else if (
-        String(is_active).toLowerCase() === 'false'
-      ) {
-        society.is_active = false;
+      if (!society) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Society not found'
+        });
       }
+
+      return res.status(200).json({
+        success: true,
+        data: society
+      });
+
+    } catch (error) {
+      next(error);
     }
+  };
 
-    await society.save();
+// ============================================================
+// UPDATE SOCIETY
+// PUT /api/societies/:id
+// ============================================================
 
-    return res.status(200).json({
-      success: true,
-      message:
-        'Society updated successfully',
-      data: society
-    });
+exports.updateSociety =
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
 
-  } catch (error) {
+      if (
+        !isValidObjectId(
+          req.params.id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid society ID'
+        });
+      }
 
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
+      const {
+        name,
+        society_code,
+        address,
+        city,
+        state,
+        contact_number,
+        is_active
+      } = req.body;
+
+      const society =
+        await Society.findById(
+          req.params.id
+        );
+
+      if (!society) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Society not found'
+        });
+      }
+
+      if (
+        name !== undefined
+      ) {
+        const value =
+          cleanString(name);
+
+        if (!value) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Society name cannot be empty'
+          });
+        }
+
+        society.name = value;
+      }
+
+      if (
+        society_code !== undefined
+      ) {
+        const value =
+          cleanString(
+            society_code
+          ).toUpperCase();
+
+        if (!value) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Society code cannot be empty'
+          });
+        }
+
+        society.society_code =
+          value;
+      }
+
+      if (
+        address !== undefined
+      ) {
+        society.address =
+          cleanString(address);
+      }
+
+      if (
+        city !== undefined
+      ) {
+        society.city =
+          cleanString(city);
+      }
+
+      if (
+        state !== undefined
+      ) {
+        society.state =
+          cleanString(state);
+      }
+
+      if (
+        contact_number !==
+        undefined
+      ) {
+        const value =
+          cleanString(
+            contact_number
+          );
+
+        if (
+          !/^[6-9]\d{9}$/.test(
+            value
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Please enter a valid 10-digit contact number'
+          });
+        }
+
+        society.contact_number =
+          value;
+      }
+
+      if (
+        is_active !== undefined
+      ) {
+
+        if (
+          typeof is_active ===
+          'boolean'
+        ) {
+          society.is_active =
+            is_active;
+
+        } else if (
+          String(
+            is_active
+          ).toLowerCase() ===
+          'true'
+        ) {
+          society.is_active =
+            true;
+
+        } else if (
+          String(
+            is_active
+          ).toLowerCase() ===
+          'false'
+        ) {
+          society.is_active =
+            false;
+        }
+      }
+
+      await society.save();
+
+      return res.status(200).json({
+        success: true,
         message:
-          'Society code already exists'
+          'Society updated successfully',
+        data: society
       });
+
+    } catch (error) {
+
+      if (
+        error.code === 11000
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Society code already exists'
+        });
+      }
+
+      next(error);
     }
+  };
 
-    next(error);
-  }
-};
+// ============================================================
+// DEACTIVATE SOCIETY
+// DELETE /api/societies/:id
+// ============================================================
 
+exports.deactivateSociety =
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
 
-/**
- * ============================================================
- * DEACTIVATE SOCIETY
- * ============================================================
- * DELETE /api/societies/:id
- * Super Admin only
- */
-exports.deactivateSociety = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const society =
-      await Society.findById(
-        req.params.id
-      );
+      if (
+        !isValidObjectId(
+          req.params.id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid society ID'
+        });
+      }
 
-    if (!society) {
-      return res.status(404).json({
-        success: false,
+      const society =
+        await Society.findById(
+          req.params.id
+        );
+
+      if (!society) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Society not found'
+        });
+      }
+
+      society.is_active =
+        false;
+
+      await society.save();
+
+      return res.status(200).json({
+        success: true,
         message:
-          'Society not found'
+          'Society deactivated successfully',
+        data: society
       });
+
+    } catch (error) {
+      next(error);
     }
+  };
 
-    society.is_active = false;
+// ============================================================
+// ACTIVATE SOCIETY
+// PUT /api/societies/:id/activate
+// ============================================================
 
-    await society.save();
+exports.activateSociety =
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
 
-    return res.status(200).json({
-      success: true,
-      message:
-        'Society deactivated successfully',
-      data: society
-    });
+      if (
+        !isValidObjectId(
+          req.params.id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid society ID'
+        });
+      }
 
-  } catch (error) {
-    next(error);
-  }
-};
+      const society =
+        await Society.findById(
+          req.params.id
+        );
 
+      if (!society) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Society not found'
+        });
+      }
 
-/**
- * ============================================================
- * ACTIVATE SOCIETY
- * ============================================================
- * PUT /api/societies/:id/activate
- * Super Admin only
- */
-exports.activateSociety = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const society =
-      await Society.findById(
-        req.params.id
-      );
+      society.is_active =
+        true;
 
-    if (!society) {
-      return res.status(404).json({
-        success: false,
+      await society.save();
+
+      return res.status(200).json({
+        success: true,
         message:
-          'Society not found'
+          'Society activated successfully',
+        data: society
       });
+
+    } catch (error) {
+      next(error);
     }
+  };
 
-    society.is_active = true;
+// ============================================================
+// GET SOCIETY STATISTICS
+// GET /api/societies/:id/stats
+// ============================================================
 
-    await society.save();
+exports.getSocietyStats =
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
 
-    return res.status(200).json({
-      success: true,
-      message:
-        'Society activated successfully',
-      data: society
-    });
+      const societyId =
+        req.params.id;
 
-  } catch (error) {
-    next(error);
-  }
-};
+      if (
+        !isValidObjectId(
+          societyId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid society ID'
+        });
+      }
 
+      const society =
+        await Society.findById(
+          societyId
+        );
 
-/**
- * ============================================================
- * GET SOCIETY STATISTICS
- * ============================================================
- * GET /api/societies/:id/stats
- * Super Admin only
- */
-exports.getSocietyStats = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const societyId =
-      req.params.id;
+      if (!society) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Society not found'
+        });
+      }
 
-    const society =
-      await Society.findById(
-        societyId
-      );
-
-    if (!society) {
-      return res.status(404).json({
-        success: false,
-        message:
-          'Society not found'
-      });
-    }
-
-    const totalUsers =
-      await User.countDocuments({
-        society_id: societyId
-      });
-
-    const activeUsers =
-      await User.countDocuments({
-        society_id: societyId,
-        is_active: true
-      });
-
-    const inactiveUsers =
-      await User.countDocuments({
-        society_id: societyId,
-        is_active: false
-      });
-
-    const managers =
-      await User.countDocuments({
-        society_id: societyId,
-        role: 'manager'
-      });
-
-    const admins =
-      await User.countDocuments({
-        society_id: societyId,
-        role: 'admin'
-      });
-
-    const residents =
-      await User.countDocuments({
-        society_id: societyId,
-        role: 'resident'
-      });
-
-    const watchmen =
-      await User.countDocuments({
-        society_id: societyId,
-        role: 'watchman'
-      });
-
-    /*
-     * IMPORTANT:
-     * Frontend Society page expects:
-     *
-     * stats.totalUsers
-     * stats.activeUsers
-     * stats.inactiveUsers
-     * stats.managers
-     * stats.admins
-     * stats.residents
-     * stats.watchmen
-     *
-     * So return exactly this structure.
-     */
-
-    return res.status(200).json({
-      success: true,
-
-      data: {
+      const [
         totalUsers,
         activeUsers,
         inactiveUsers,
         managers,
         admins,
         residents,
-        watchmen,
+        watchmen
+      ] =
+        await Promise.all([
+          User.countDocuments({
+            society_id:
+              societyId
+          }),
 
-        // Keep detailed structure also available
-        society: {
-          _id: society._id,
-          name: society.name,
-          society_code: society.society_code,
-          is_active: society.is_active
-        },
+          User.countDocuments({
+            society_id:
+              societyId,
+            is_active:
+              true
+          }),
 
-        users: {
-          total: totalUsers,
-          active: activeUsers,
-          inactive: inactiveUsers
-        },
+          User.countDocuments({
+            society_id:
+              societyId,
+            is_active:
+              false
+          }),
 
-        roles: {
-          manager: managers,
-          admin: admins,
-          resident: residents,
-          watchman: watchmen
+          User.countDocuments({
+            society_id:
+              societyId,
+            role:
+              'manager'
+          }),
+
+          User.countDocuments({
+            society_id:
+              societyId,
+            role:
+              'admin'
+          }),
+
+          User.countDocuments({
+            society_id:
+              societyId,
+            role:
+              'resident'
+          }),
+
+          User.countDocuments({
+            society_id:
+              societyId,
+            role:
+              'watchman'
+          })
+        ]);
+
+      return res.status(200).json({
+        success: true,
+
+        data: {
+
+          totalUsers,
+          activeUsers,
+          inactiveUsers,
+
+          managers,
+          admins,
+          residents,
+          watchmen,
+
+          society: {
+            _id:
+              society._id,
+
+            name:
+              society.name,
+
+            society_code:
+              society.society_code,
+
+            is_active:
+              society.is_active
+          },
+
+          users: {
+            total:
+              totalUsers,
+
+            active:
+              activeUsers,
+
+            inactive:
+              inactiveUsers
+          },
+
+          roles: {
+            manager:
+              managers,
+
+            admin:
+              admins,
+
+            resident:
+              residents,
+
+            watchman:
+              watchmen
+          }
         }
+      });
+
+    } catch (error) {
+      next(error);
+    }
+  };
+
+// ============================================================
+// GET SOCIETY MANAGER
+// GET /api/societies/:id/manager
+// ============================================================
+
+exports.getSocietyManager =
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
+
+      const societyId =
+        req.params.id;
+
+      if (
+        !isValidObjectId(
+          societyId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid society ID'
+        });
       }
-    });
 
-  } catch (error) {
-    next(error);
-  }
-};
+      const society =
+        await Society.findById(
+          societyId
+        );
 
+      if (!society) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Society not found'
+        });
+      }
 
-/**
- * ============================================================
- * GET SOCIETY MANAGER
- * ============================================================
- * GET /api/societies/:id/manager
- * Super Admin only
- */
-exports.getSocietyManager = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const societyId =
-      req.params.id;
+      const manager =
+        await User.findOne({
+          society_id:
+            societyId,
 
-    const society =
-      await Society.findById(
-        societyId
+          role:
+            'manager'
+        }).select(
+          '-password_hash -otp -otp_expires -reset_password_otp -reset_password_otp_expires'
+        );
+
+      return res.status(200).json({
+        success: true,
+        data:
+          manager || null,
+        hasManager:
+          !!manager
+      });
+
+    } catch (error) {
+      next(error);
+    }
+  };
+
+// ============================================================
+// ASSIGN / REPLACE MANAGER
+//
+// PUT /api/societies/:id/manager
+//
+// Existing user:
+// {
+//   user_id: "USER_ID"
+// }
+//
+// New manager:
+// {
+//   name,
+//   email,
+//   password,
+//   phone,
+//   flat_no
+// }
+//
+// If old manager exists:
+// old manager -> resident + inactive
+//
+// ============================================================
+
+exports.assignOrReplaceManager =
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
+
+      const societyId =
+        req.params.id;
+
+      if (
+        !isValidObjectId(
+          societyId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid society ID'
+        });
+      }
+
+      const society =
+        await Society.findById(
+          societyId
+        );
+
+      if (!society) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Society not found'
+        });
+      }
+
+      if (
+        !society.is_active
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Cannot assign manager to an inactive society'
+        });
+      }
+
+      const currentManager =
+        await User.findOne({
+          society_id:
+            societyId,
+
+          role:
+            'manager'
+        });
+
+      const {
+        user_id
+      } = req.body;
+
+      // ========================================================
+      // EXISTING USER -> MANAGER
+      // ========================================================
+
+      if (user_id) {
+
+        if (
+          !isValidObjectId(
+            user_id
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Invalid manager user ID'
+          });
+        }
+
+        if (
+          currentManager &&
+          currentManager._id
+            .toString() ===
+            user_id.toString()
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'This user is already the manager of this society'
+          });
+        }
+
+        const newManager =
+          await User.findOne({
+            _id:
+              user_id,
+
+            society_id:
+              societyId,
+
+            role: {
+              $in: [
+                'resident',
+                'admin'
+              ]
+            },
+
+            is_active:
+              true
+          });
+
+        if (!newManager) {
+          return res.status(404).json({
+            success: false,
+            message:
+              'Active resident/admin from this society was not found'
+          });
+        }
+
+        // New manager
+        newManager.role =
+          'manager';
+
+        newManager.is_active =
+          true;
+
+        await newManager.save();
+
+        // Old manager
+        if (
+          currentManager
+        ) {
+          currentManager.role =
+            'resident';
+
+          currentManager.is_active =
+            false;
+
+          await currentManager.save();
+        }
+
+        return res.status(200).json({
+          success: true,
+
+          message:
+            `${newManager.name} is now the manager of ${society.name}`,
+
+          data: {
+
+            manager:
+              newManager.toJSON(),
+
+            previous_manager:
+              currentManager
+                ? currentManager.toJSON()
+                : null,
+
+            society: {
+              _id:
+                society._id,
+
+              name:
+                society.name,
+
+              society_code:
+                society.society_code
+            }
+          }
+        });
+      }
+
+      // ========================================================
+      // CREATE NEW MANAGER
+      // ========================================================
+
+      const {
+        name,
+        email,
+        password,
+        phone,
+        flat_no
+      } = req.body;
+
+      const cleanName =
+        cleanString(name);
+
+      const cleanEmail =
+        cleanString(
+          email
+        ).toLowerCase();
+
+      const cleanPassword =
+        typeof password ===
+        'string'
+          ? password
+          : '';
+
+      const cleanPhone =
+        cleanString(phone);
+
+      const cleanFlatNo =
+        cleanString(flat_no);
+
+      if (
+        !cleanName ||
+        !cleanEmail ||
+        !cleanPassword ||
+        !cleanPhone ||
+        !cleanFlatNo
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Name, email, password, phone and flat number are required'
+        });
+      }
+
+      if (
+        cleanName.length < 2
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Name must be at least 2 characters'
+        });
+      }
+
+      if (
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+          cleanEmail
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Please enter a valid email address'
+        });
+      }
+
+      if (
+        cleanPassword.length < 8
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Password must be at least 8 characters'
+        });
+      }
+
+      if (
+        !/^[6-9]\d{9}$/.test(
+          cleanPhone
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Please enter a valid 10-digit phone number'
+        });
+      }
+
+      // Email globally unique
+      const existingEmail =
+        await User.findOne({
+          email:
+            cleanEmail
+        });
+
+      if (
+        existingEmail
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Email is already registered. Please use another email.'
+        });
+      }
+
+      // Flat only inside this society
+      const existingFlat =
+        await User.findOne({
+          society_id:
+            societyId,
+
+          flat_no:
+            cleanFlatNo,
+
+          is_active:
+            true
+        });
+
+      if (
+        existingFlat
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            `Flat ${cleanFlatNo} is already registered in ${society.name}`
+        });
+      }
+
+      // Create new manager
+      const manager =
+        await User.create({
+
+          name:
+            cleanName,
+
+          email:
+            cleanEmail,
+
+          password_hash:
+            cleanPassword,
+
+          flat_no:
+            cleanFlatNo,
+
+          phone:
+            cleanPhone,
+
+          society_id:
+            society._id,
+
+          role:
+            'manager',
+
+          is_active:
+            true,
+
+          is_verified:
+            true
+        });
+
+      // Retire old manager AFTER
+      // new manager is successfully created
+      if (
+        currentManager
+      ) {
+
+        currentManager.role =
+          'resident';
+
+        currentManager.is_active =
+          false;
+
+        await currentManager.save();
+      }
+
+      return res.status(
+        currentManager
+          ? 200
+          : 201
+      ).json({
+
+        success: true,
+
+        message:
+          currentManager
+            ? `${manager.name} is now the manager of ${society.name}`
+            : `Manager created successfully for ${society.name}`,
+
+        data: {
+
+          manager:
+            manager.toJSON(),
+
+          previous_manager:
+            currentManager
+              ? currentManager.toJSON()
+              : null,
+
+          society: {
+
+            _id:
+              society._id,
+
+            name:
+              society.name,
+
+            society_code:
+              society.society_code
+          }
+        }
+      });
+
+    } catch (error) {
+
+      console.error(
+        'Assign/replace manager error:',
+        error
       );
 
-    if (!society) {
-      return res.status(404).json({
-        success: false,
-        message:
-          'Society not found'
-      });
+      if (
+        error.name ===
+        'ValidationError'
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            Object.values(
+              error.errors
+            )
+              .map(
+                err =>
+                  err.message
+              )
+              .join('. ')
+        });
+      }
+
+      if (
+        error.code ===
+        11000
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Duplicate data already exists'
+        });
+      }
+
+      next(error);
     }
+  };
 
-    const manager =
-      await User.findOne({
-        society_id: societyId,
-        role: 'manager'
-      }).select(
-        '-password_hash -reset_password_otp -reset_password_otp_expires'
-      );
+// ============================================================
+// REMOVE MANAGER
+//
+// DELETE /api/societies/:id/manager
+//
+// Manager is NOT deleted.
+//
+// manager -> resident
+// manager -> inactive
+//
+// This preserves old manager history.
+// ============================================================
 
-    if (!manager) {
-      return res.status(404).json({
-        success: false,
+exports.removeSocietyManager =
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
+
+      const societyId =
+        req.params.id;
+
+      if (
+        !isValidObjectId(
+          societyId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid society ID'
+        });
+      }
+
+      const society =
+        await Society.findById(
+          societyId
+        );
+
+      if (!society) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Society not found'
+        });
+      }
+
+      const manager =
+        await User.findOne({
+          society_id:
+            societyId,
+
+          role:
+            'manager'
+        });
+
+      if (!manager) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'No manager is currently assigned to this society'
+        });
+      }
+
+      manager.role =
+        'resident';
+
+      manager.is_active =
+        false;
+
+      await manager.save();
+
+      return res.status(200).json({
+        success: true,
+
         message:
-          'Manager not found for this society'
+          `${manager.name} has been removed as manager`,
+
+        data: {
+
+          removed_manager:
+            manager.toJSON(),
+
+          society: {
+
+            _id:
+              society._id,
+
+            name:
+              society.name,
+
+            society_code:
+              society.society_code
+          }
+        }
       });
+
+    } catch (error) {
+      next(error);
     }
-
-    return res.status(200).json({
-      success: true,
-      data: manager
-    });
-
-  } catch (error) {
-    next(error);
-  }
-};
+  };
