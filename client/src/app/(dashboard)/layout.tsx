@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import {
+  useRouter,
+  usePathname,
+} from 'next/navigation';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useEmergency } from '@/hooks/useEmergency';
@@ -22,6 +25,7 @@ export default function DashboardLayout({
 }) {
 
   const router = useRouter();
+  const pathname = usePathname();
 
 
   // ==========================================================
@@ -51,7 +55,8 @@ export default function DashboardLayout({
 
 
   // ==========================================================
-  // REDIRECT IF NOT AUTHENTICATED
+  // AUTH REDIRECT
+  // ONLY REDIRECT UNAUTHENTICATED USERS
   // ==========================================================
 
   useEffect(() => {
@@ -73,15 +78,130 @@ export default function DashboardLayout({
 
 
   // ==========================================================
-  // ROLE CHECK
+  // ROLE
   // ==========================================================
 
   const isSuperAdmin =
     user?.role === 'super_admin';
 
+  const isManager =
+    user?.role === 'manager';
+
+  const isAdmin =
+    user?.role === 'admin';
+
+  const isWatchman =
+    user?.role === 'watchman';
+
 
   // ==========================================================
-  // EMERGENCY RESOLVE PERMISSION
+  // ADMIN ROUTES
+  // ==========================================================
+
+  const isAdminRoute =
+    pathname?.startsWith('/admin');
+
+
+  // ==========================================================
+  // ALLOWED SUPER ADMIN ROUTES
+  // ==========================================================
+
+  const superAdminRoutes = [
+    '/admin/users',
+    '/admin/payments',
+    '/admin/complaints',
+    '/admin/societies',
+  ];
+
+
+  const isAllowedSuperAdminRoute =
+    superAdminRoutes.some(
+      (route) =>
+        pathname === route ||
+        pathname.startsWith(route + '/')
+    );
+
+
+  // ==========================================================
+  // IMPORTANT
+  // DO NOT REDIRECT SUPER ADMIN FROM ADMIN ROUTES
+  // ==========================================================
+
+  useEffect(() => {
+
+    if (
+      loading ||
+      !isAuthenticated ||
+      !user
+    ) {
+      return;
+    }
+
+
+    // --------------------------------------------------------
+    // SUPER ADMIN
+    // --------------------------------------------------------
+
+    if (isSuperAdmin) {
+
+      if (isAllowedSuperAdminRoute) {
+        return;
+      }
+
+      // Normal dashboard is allowed
+      if (
+        pathname === '/' ||
+        pathname === ''
+      ) {
+        return;
+      }
+
+      return;
+    }
+
+
+    // --------------------------------------------------------
+    // MANAGER / ADMIN
+    // --------------------------------------------------------
+
+    if (
+      (isManager || isAdmin) &&
+      isAdminRoute
+    ) {
+      return;
+    }
+
+
+    // --------------------------------------------------------
+    // WATCHMAN
+    // --------------------------------------------------------
+
+    if (
+      isWatchman &&
+      pathname !== '/watchman'
+    ) {
+
+      router.replace('/watchman');
+
+    }
+
+  }, [
+    loading,
+    isAuthenticated,
+    user,
+    isSuperAdmin,
+    isManager,
+    isAdmin,
+    isWatchman,
+    isAdminRoute,
+    isAllowedSuperAdminRoute,
+    pathname,
+    router,
+  ]);
+
+
+  // ==========================================================
+  // EMERGENCY PERMISSION
   // ==========================================================
 
   const canResolve =
@@ -123,13 +243,10 @@ export default function DashboardLayout({
 
 
   // ==========================================================
-  // LOADING SCREEN
+  // AUTH LOADING
   // ==========================================================
 
-  if (
-    loading ||
-    !isAuthenticated
-  ) {
+  if (loading) {
 
     return (
       <div
@@ -178,6 +295,56 @@ export default function DashboardLayout({
 
 
   // ==========================================================
+  // NOT AUTHENTICATED
+  // ==========================================================
+
+  if (!isAuthenticated) {
+
+    return (
+      <div
+        className="
+          min-h-screen
+          w-full
+          bg-slate-50
+          flex
+          items-center
+          justify-center
+        "
+      >
+
+        <div className="text-center">
+
+          <div
+            className="
+              w-10
+              h-10
+              rounded-full
+              border-4
+              border-blue-100
+              border-t-blue-600
+              animate-spin
+              mx-auto
+            "
+          />
+
+          <p
+            className="
+              mt-4
+              text-slate-500
+              text-sm
+            "
+          >
+            Redirecting to login...
+          </p>
+
+        </div>
+
+      </div>
+    );
+  }
+
+
+  // ==========================================================
   // MAIN LAYOUT
   // ==========================================================
 
@@ -210,7 +377,6 @@ export default function DashboardLayout({
           min-w-0
         "
       >
-
 
         {/* ===================================================
             SIDEBAR
@@ -248,7 +414,6 @@ export default function DashboardLayout({
               overflow-x-hidden
             "
           >
-
 
             {/* =================================================
                 EMERGENCY BANNER
@@ -320,7 +485,7 @@ export default function DashboardLayout({
 
 
       {/* =====================================================
-          TOAST
+          TOASTER
       ===================================================== */}
 
       <Toaster />

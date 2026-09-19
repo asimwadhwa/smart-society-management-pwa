@@ -412,7 +412,7 @@ export default function Sidebar() {
               {superAdminItems.map(
                 (item) => (
 
-                  <Link
+                  <a
                     key={`${item.href}-${item.label}`}
                     href={item.href}
                     className={cn(
@@ -449,7 +449,7 @@ export default function Sidebar() {
                       {item.label}
                     </span>
 
-                  </Link>
+                  </a>
 
                 )
               )}
@@ -729,7 +729,7 @@ export default function Sidebar() {
           ).map(
             (item) => (
 
-              <Link
+              <a
                 key={`${item.href}-${item.label}`}
                 href={item.href}
                 className={cn(
@@ -779,7 +779,7 @@ export default function Sidebar() {
                   {item.label}
                 </span>
 
-              </Link>
+              </a>
 
             )
           )}

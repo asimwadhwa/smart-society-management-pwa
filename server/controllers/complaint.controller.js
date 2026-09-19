@@ -1,4 +1,8 @@
-const Complaint = require('../models/Complaint');
+const mongoose = require('mongoose');
+
+const Complaint =
+  require('../models/Complaint');
+
 const {
   sendComplaintStatusUpdate
 } = require('../services/email.service');
@@ -8,69 +12,113 @@ const {
 } = require('../services/upload.service');
 
 
-/**
- * Get current user's society ID
- */
+// ============================================================
+// HELPERS
+// ============================================================
+
 const getSocietyId = (req) => {
   return req.user?.society_id || null;
 };
 
 
-/**
- * @desc    Create a new complaint
- * @route   POST /api/complaints
- * @access  Private
- */
+const isSuperAdmin = (req) => {
+  return req.user?.role === 'super_admin';
+};
+
+
+const isAdminOrManager = (req) => {
+  return [
+    'manager',
+    'admin'
+  ].includes(
+    req.user?.role
+  );
+};
+
+
+const isValidObjectId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
+
+
+// ============================================================
+// CREATE COMPLAINT
+// ============================================================
+
 exports.createComplaint = async (
   req,
   res,
   next
 ) => {
+
   try {
+
     const {
       description,
       image_url
     } = req.body;
 
-    const user = req.user;
+
+    const user =
+      req.user;
+
 
     const societyId =
       getSocietyId(req);
 
+
     if (!societyId) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
           'User is not assigned to any society'
+
       });
     }
 
-    // Validate description
+
     if (
       !description ||
       description.trim().length === 0
     ) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
           'Complaint description is required'
+
       });
     }
 
-    if (description.length > 1000) {
+
+    if (
+      description.length > 1000
+    ) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
           'Description cannot exceed 1000 characters'
+
       });
     }
 
-    // Create society-specific complaint
+
     const complaint =
       await Complaint.create({
-        society_id: societyId,
 
-        user_id: user._id,
+        society_id:
+          societyId,
+
+        user_id:
+          user._id,
 
         flat_no:
           user.flat_no,
@@ -81,22 +129,32 @@ exports.createComplaint = async (
         image_url:
           image_url || null,
 
-        status: 'open'
+        status:
+          'open'
+
       });
+
 
     await complaint.populate(
       'user_id',
       'name email flat_no phone'
     );
 
+
     return res.status(201).json({
+
       success: true,
+
       message:
         'Complaint submitted successfully',
-      data: complaint
+
+      data:
+        complaint
+
     });
 
   } catch (error) {
+
     console.error(
       'Error creating complaint:',
       error
@@ -107,18 +165,21 @@ exports.createComplaint = async (
 };
 
 
-/**
- * @desc    Get current user's complaints
- * @route   GET /api/complaints
- * @access  Private
- */
+// ============================================================
+// CURRENT USER COMPLAINTS
+// ============================================================
+
 exports.getUserComplaints = async (
   req,
   res,
   next
 ) => {
+
   try {
-    const user = req.user;
+
+    const user =
+      req.user;
+
 
     const {
       page = 1,
@@ -126,22 +187,30 @@ exports.getUserComplaints = async (
       status
     } = req.query;
 
+
     const societyId =
       getSocietyId(req);
 
+
     if (!societyId) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
           'User is not assigned to any society'
+
       });
     }
+
 
     const pageNumber =
       Math.max(
         parseInt(page) || 1,
         1
       );
+
 
     const limitNumber =
       Math.min(
@@ -152,12 +221,17 @@ exports.getUserComplaints = async (
         100
       );
 
-    // User can only see complaints
-    // from their own society and their own account.
+
     const query = {
-      society_id: societyId,
-      user_id: user._id
+
+      society_id:
+        societyId,
+
+      user_id:
+        user._id
+
     };
+
 
     if (
       status &&
@@ -167,13 +241,18 @@ exports.getUserComplaints = async (
         'resolved'
       ].includes(status)
     ) {
-      query.status = status;
+
+      query.status =
+        status;
+
     }
+
 
     const total =
       await Complaint.countDocuments(
         query
       );
+
 
     const complaints =
       await Complaint.find(query)
@@ -185,33 +264,52 @@ exports.getUserComplaints = async (
           'resolved_by',
           'name email'
         )
+        .populate(
+          'society_id',
+          'name society_code'
+        )
         .sort({
-          created_at: -1
+          created_at:
+            -1
         })
         .skip(
           (pageNumber - 1) *
             limitNumber
         )
-        .limit(limitNumber);
+        .limit(
+          limitNumber
+        );
+
 
     return res.status(200).json({
+
       success: true,
-      data: complaints,
+
+      data:
+        complaints,
 
       pagination: {
-        current: pageNumber,
 
-        pages: Math.ceil(
-          total / limitNumber
-        ),
+        current:
+          pageNumber,
+
+        pages:
+          Math.ceil(
+            total /
+              limitNumber
+          ),
 
         total,
 
-        limit: limitNumber
+        limit:
+          limitNumber
+
       }
+
     });
 
   } catch (error) {
+
     console.error(
       'Error fetching user complaints:',
       error
@@ -222,42 +320,41 @@ exports.getUserComplaints = async (
 };
 
 
-/**
- * @desc    Get all complaints
- * @route   GET /api/complaints/all
- * @access  Private (Manager, Admin)
- */
+// ============================================================
+// ALL COMPLAINTS
+//
+// SUPER ADMIN
+// -> ALL SOCIETIES
+//
+// MANAGER / ADMIN
+// -> OWN SOCIETY
+// ============================================================
+
 exports.getAllComplaints = async (
   req,
   res,
   next
 ) => {
+
   try {
+
     const {
       page = 1,
       limit = 10,
       status,
       flat_no,
+      society_id,
       sortBy = 'created_at',
       order = 'desc'
     } = req.query;
 
-    const societyId =
-      getSocietyId(req);
-
-    if (!societyId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'User is not assigned to any society'
-      });
-    }
 
     const pageNumber =
       Math.max(
         parseInt(page) || 1,
         1
       );
+
 
     const limitNumber =
       Math.min(
@@ -268,12 +365,72 @@ exports.getAllComplaints = async (
         100
       );
 
-    // IMPORTANT:
-    // Admin/Manager can only see complaints
-    // from their own society.
-    const query = {
-      society_id: societyId
-    };
+
+    const query = {};
+
+
+    // ========================================================
+    // SUPER ADMIN
+    // ========================================================
+
+    if (isSuperAdmin(req)) {
+
+      if (society_id) {
+
+        if (
+          !isValidObjectId(
+            society_id
+          )
+        ) {
+
+          return res.status(400).json({
+
+            success: false,
+
+            message:
+              'Invalid society ID'
+
+          });
+        }
+
+
+        query.society_id =
+          society_id;
+      }
+
+    }
+
+    // ========================================================
+    // MANAGER / ADMIN
+    // ========================================================
+
+    else {
+
+      const currentSociety =
+        getSocietyId(req);
+
+
+      if (!currentSociety) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'User is not assigned to any society'
+
+        });
+      }
+
+
+      query.society_id =
+        currentSociety;
+    }
+
+
+    // ========================================================
+    // FILTERS
+    // ========================================================
 
     if (
       status &&
@@ -283,22 +440,32 @@ exports.getAllComplaints = async (
         'resolved'
       ].includes(status)
     ) {
-      query.status = status;
+
+      query.status =
+        status;
+
     }
 
+
     if (flat_no) {
-      query.flat_no = flat_no;
+
+      query.flat_no =
+        flat_no;
+
     }
+
 
     const total =
       await Complaint.countDocuments(
         query
       );
 
+
     const sortOrder =
       order === 'asc'
         ? 1
         : -1;
+
 
     const allowedSortFields = [
       'created_at',
@@ -307,6 +474,7 @@ exports.getAllComplaints = async (
       'flat_no'
     ];
 
+
     const safeSortBy =
       allowedSortFields.includes(
         sortBy
@@ -314,83 +482,130 @@ exports.getAllComplaints = async (
         ? sortBy
         : 'created_at';
 
+
     const sort = {
+
       [safeSortBy]:
         sortOrder
+
     };
+
 
     const complaints =
       await Complaint.find(query)
         .populate(
           'user_id',
-          'name email flat_no phone'
+          'name email flat_no phone role'
         )
         .populate(
           'resolved_by',
           'name email'
+        )
+        .populate(
+          'society_id',
+          'name society_code city state'
         )
         .sort(sort)
         .skip(
           (pageNumber - 1) *
             limitNumber
         )
-        .limit(limitNumber);
+        .limit(
+          limitNumber
+        );
 
-    // Society-specific stats
+
+    // ========================================================
+    // STATS
+    // ========================================================
+
     const stats =
       await Complaint.aggregate([
+
         {
-          $match: {
-            society_id:
-              societyId
-          }
+          $match:
+            query
         },
 
         {
           $group: {
-            _id: '$status',
+
+            _id:
+              '$status',
 
             count: {
               $sum: 1
             }
+
           }
+
         }
+
       ]);
 
+
     const statsMap = {
+
       open: 0,
+
       'in-progress': 0,
+
       resolved: 0
+
     };
 
+
     stats.forEach(
-      (s) => {
-        statsMap[s._id] =
-          s.count;
+      (item) => {
+
+        if (
+          Object.prototype.hasOwnProperty.call(
+            statsMap,
+            item._id
+          )
+        ) {
+
+          statsMap[item._id] =
+            item.count;
+
+        }
+
       }
     );
 
+
     return res.status(200).json({
+
       success: true,
 
-      data: complaints,
+      data:
+        complaints,
 
-      stats: statsMap,
+      stats:
+        statsMap,
 
       pagination: {
-        current: pageNumber,
 
-        pages: Math.ceil(
-          total / limitNumber
-        ),
+        current:
+          pageNumber,
+
+        pages:
+          Math.ceil(
+            total /
+              limitNumber
+          ),
 
         total,
 
-        limit: limitNumber
+        limit:
+          limitNumber
+
       }
+
     });
 
   } catch (error) {
+
     console.error(
       'Error fetching all complaints:',
       error
@@ -401,42 +616,79 @@ exports.getAllComplaints = async (
 };
 
 
-/**
- * @desc    Get complaint by ID
- * @route   GET /api/complaints/:id
- * @access  Private
- */
+// ============================================================
+// GET COMPLAINT BY ID
+// ============================================================
+
 exports.getComplaintById = async (
   req,
   res,
   next
 ) => {
+
   try {
+
     const {
       id
     } = req.params;
 
+
     const user =
       req.user;
 
-    const societyId =
-      getSocietyId(req);
 
-    if (!societyId) {
+    if (
+      !isValidObjectId(id)
+    ) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
-          'User is not assigned to any society'
+          'Invalid complaint ID'
+
       });
     }
 
-    // Find complaint only inside
-    // current user's society.
+
+    const query = {
+      _id:
+        id
+    };
+
+
+    if (
+      !isSuperAdmin(req)
+    ) {
+
+      const societyId =
+        getSocietyId(req);
+
+
+      if (!societyId) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'User is not assigned to any society'
+
+        });
+      }
+
+
+      query.society_id =
+        societyId;
+
+    }
+
+
     const complaint =
-      await Complaint.findOne({
-        _id: id,
-        society_id: societyId
-      })
+      await Complaint.findOne(
+        query
+      )
         .populate(
           'user_id',
           'name email flat_no phone'
@@ -444,45 +696,64 @@ exports.getComplaintById = async (
         .populate(
           'resolved_by',
           'name email'
+        )
+        .populate(
+          'society_id',
+          'name society_code city state'
         );
 
+
     if (!complaint) {
+
       return res.status(404).json({
+
         success: false,
+
         message:
-          'Complaint not found in your society'
+          'Complaint not found'
+
       });
     }
 
+
     const isOwner =
+      complaint.user_id &&
       complaint.user_id._id.toString() ===
-      user._id.toString();
+        user._id.toString();
+
 
     const isAdmin =
-      [
-        'manager',
-        'admin'
-      ].includes(
-        user.role
-      );
+      isAdminOrManager(req);
+
 
     if (
+      !isSuperAdmin(req) &&
       !isOwner &&
       !isAdmin
     ) {
+
       return res.status(403).json({
+
         success: false,
+
         message:
           'Not authorized to view this complaint'
+
       });
     }
 
+
     return res.status(200).json({
+
       success: true,
-      data: complaint
+
+      data:
+        complaint
+
     });
 
   } catch (error) {
+
     console.error(
       'Error fetching complaint:',
       error
@@ -493,45 +764,49 @@ exports.getComplaintById = async (
 };
 
 
-/**
- * @desc    Update complaint status
- * @route   PUT /api/complaints/:id/status
- * @access  Private (Manager, Admin)
- */
+// ============================================================
+// UPDATE COMPLAINT STATUS
+//
+// SUPER ADMIN
+// -> ANY SOCIETY
+//
+// MANAGER / ADMIN
+// -> OWN SOCIETY
+// ============================================================
+
 exports.updateComplaintStatus = async (
   req,
   res,
   next
 ) => {
+
   try {
+
     const {
       id
     } = req.params;
+
 
     const {
       status,
       admin_notes
     } = req.body;
 
+
     const user =
       req.user;
 
-    const societyId =
-      getSocietyId(req);
-
-    if (!societyId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'User is not assigned to any society'
-      });
-    }
 
     const validStatuses = [
+
       'open',
+
       'in-progress',
+
       'resolved'
+
     ];
+
 
     if (
       !status ||
@@ -539,68 +814,146 @@ exports.updateComplaintStatus = async (
         status
       )
     ) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
           'Invalid status. Must be: open, in-progress, or resolved'
+
       });
     }
 
-    // IMPORTANT:
-    // Complaint must belong to current society.
-    const complaint =
-      await Complaint.findOne({
-        _id: id,
-        society_id: societyId
+
+    if (
+      !isValidObjectId(id)
+    ) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        message:
+          'Invalid complaint ID'
+
       });
+    }
+
+
+    const query = {
+
+      _id:
+        id
+
+    };
+
+
+    if (
+      !isSuperAdmin(req)
+    ) {
+
+      const societyId =
+        getSocietyId(req);
+
+
+      if (!societyId) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            'User is not assigned to any society'
+
+        });
+      }
+
+
+      query.society_id =
+        societyId;
+
+    }
+
+
+    const complaint =
+      await Complaint.findOne(
+        query
+      );
+
 
     if (!complaint) {
+
       return res.status(404).json({
+
         success: false,
+
         message:
-          'Complaint not found in your society'
+          'Complaint not found'
+
       });
     }
+
 
     const previousStatus =
       complaint.status;
 
+
     complaint.status =
       status;
 
+
     if (
-      admin_notes !== undefined
+      admin_notes !==
+      undefined
     ) {
+
       complaint.admin_notes =
         admin_notes;
+
     }
+
 
     if (
       status === 'resolved'
     ) {
+
       complaint.resolved_by =
         user._id;
+
     }
 
+
     await complaint.save();
+
 
     await complaint.populate(
       'user_id',
       'name email flat_no phone'
     );
 
+
     await complaint.populate(
       'resolved_by',
       'name email'
     );
 
-    // Send email when status changes
+
+    await complaint.populate(
+      'society_id',
+      'name society_code'
+    );
+
+
     if (
       previousStatus !==
       status
     ) {
+
       try {
+
         await sendComplaintStatusUpdate({
+
           email:
             complaint.user_id.email,
 
@@ -620,32 +973,43 @@ exports.updateComplaintStatus = async (
             status,
 
           admin_notes:
-            admin_notes || null,
+            admin_notes ||
+            null,
 
           updated_by:
             user.name,
 
           updated_at:
             new Date()
+
         });
+
       } catch (emailError) {
+
         console.error(
           'Failed to send status update email:',
           emailError.message
         );
+
       }
+
     }
 
+
     return res.status(200).json({
+
       success: true,
 
       message:
         `Complaint status updated to ${status}`,
 
-      data: complaint
+      data:
+        complaint
+
     });
 
   } catch (error) {
+
     console.error(
       'Error updating complaint status:',
       error
@@ -656,43 +1020,61 @@ exports.updateComplaintStatus = async (
 };
 
 
-/**
- * @desc    Get ImageKit upload URL/authentication
- * @route   POST /api/complaints/upload-url
- * @access  Private
- */
+// ============================================================
+// IMAGEKIT UPLOAD URL
+// ============================================================
+
 exports.getUploadUrl = async (
   req,
   res,
   next
 ) => {
+
   try {
-    // User must belong to a society
-    if (!getSocietyId(req)) {
+
+    if (
+      !getSocietyId(req)
+    ) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
           'User is not assigned to any society'
+
       });
     }
+
 
     const result =
       getAuthenticationParameters();
 
+
     if (!result.success) {
+
       return res.status(500).json({
+
         success: false,
+
         message:
           'Failed to generate upload credentials'
+
       });
     }
 
+
     return res.status(200).json({
+
       success: true,
-      data: result.data
+
+      data:
+        result.data
+
     });
 
   } catch (error) {
+
     console.error(
       'Error generating upload URL:',
       error

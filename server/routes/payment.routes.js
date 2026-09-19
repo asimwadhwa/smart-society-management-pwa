@@ -5,13 +5,14 @@ const router = express.Router();
 const paymentController = require('../controllers/payment.controller');
 
 const {
-  authenticate
+  authenticate,
+  authorize
 } = require('../middleware/auth.middleware');
+
 
 // ============================================================
 // RAZORPAY WEBHOOK
-// No JWT authentication
-// Signature verification is handled by controller
+// Public route
 // ============================================================
 
 router.post(
@@ -19,40 +20,69 @@ router.post(
   paymentController.handleWebhook
 );
 
+
 // ============================================================
 // PROTECTED PAYMENT ROUTES
 // ============================================================
 
 router.use(authenticate);
 
+
+// ============================================================
+// ALL PAYMENTS
+// Super Admin = all societies
+// Manager/Admin = own society
+// ============================================================
+
+router.get(
+  '/all',
+  authorize('super_admin', 'manager', 'admin'),
+  paymentController.getAllPayments
+);
+
+
+// ============================================================
+// PAYMENT STATS
+// Super Admin = all societies
+// Manager/Admin = own society
+// ============================================================
+
+router.get(
+  '/stats',
+  authorize('super_admin', 'manager', 'admin'),
+  paymentController.getPaymentStats
+);
+
+
 // ============================================================
 // VERIFY PAYMENT
 // ============================================================
 
-// POST /api/payment/verify
 router.post(
   '/verify',
   paymentController.verifyPayment
 );
 
+
+// ============================================================
+// PAYMENT STATUS
+// IMPORTANT: Must come before /:paymentId
+// ============================================================
+
+router.get(
+  '/status/:orderId',
+  paymentController.getPaymentStatus
+);
+
+
 // ============================================================
 // PAYMENT DETAILS
 // ============================================================
 
-// GET /api/payment/:paymentId
 router.get(
   '/:paymentId',
   paymentController.getPaymentDetails
 );
 
-// ============================================================
-// PAYMENT STATUS
-// ============================================================
-
-// GET /api/payment/status/:orderId
-router.get(
-  '/status/:orderId',
-  paymentController.getPaymentStatus
-);
 
 module.exports = router;

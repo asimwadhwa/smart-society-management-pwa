@@ -2,12 +2,14 @@ const express = require('express');
 
 const router = express.Router();
 
-const complaintController = require('../controllers/complaint.controller');
+const complaintController =
+  require('../controllers/complaint.controller');
 
 const {
   authenticate,
   authorize
 } = require('../middleware/auth.middleware');
+
 
 // ============================================================
 // AUTHENTICATION
@@ -15,55 +17,79 @@ const {
 
 router.use(authenticate);
 
+
 // ============================================================
-// COMPLAINTS
+// CREATE COMPLAINT
 // ============================================================
 
-// POST /api/complaints
-// All authenticated society users
 router.post(
   '/',
   complaintController.createComplaint
 );
 
-// GET /api/complaints
-// Current user's complaints
+
+// ============================================================
+// CURRENT USER COMPLAINTS
+// ============================================================
+
 router.get(
   '/',
   complaintController.getUserComplaints
 );
 
-// GET /api/complaints/all
-// Manager/Admin - current society only
+
+// ============================================================
+// ALL COMPLAINTS
+// Super Admin = all societies
+// Manager/Admin = own society
+// ============================================================
+
 router.get(
   '/all',
-  authorize('manager', 'admin'),
+  authorize(
+    'super_admin',
+    'manager',
+    'admin'
+  ),
   complaintController.getAllComplaints
 );
 
-// GET /api/complaints/:id
-// Current society complaint
+
+// ============================================================
+// SINGLE COMPLAINT
+// ============================================================
+
 router.get(
   '/:id',
   complaintController.getComplaintById
 );
 
-// PUT /api/complaints/:id/status
-// Manager/Admin - current society only
+
+// ============================================================
+// UPDATE COMPLAINT STATUS
+// Super Admin = all societies
+// Manager/Admin = own society
+// ============================================================
+
 router.put(
   '/:id/status',
-  authorize('manager', 'admin'),
+  authorize(
+    'super_admin',
+    'manager',
+    'admin'
+  ),
   complaintController.updateComplaintStatus
 );
+
 
 // ============================================================
 // IMAGEKIT
 // ============================================================
 
-// POST /api/complaints/upload-url
 router.post(
   '/upload-url',
   complaintController.getUploadUrl
 );
+
 
 module.exports = router;

@@ -1,10 +1,16 @@
 const crypto = require('crypto');
 
+const mongoose = require('mongoose');
+
 const Maintenance = require('../models/Maintenance');
 const PaymentLog = require('../models/PaymentLog');
 const razorpay = require('../config/razorpay');
 
-// Import email service
+
+// ============================================================
+// EMAIL SERVICE
+// ============================================================
+
 let emailService;
 
 try {
@@ -16,25 +22,44 @@ try {
 }
 
 
-/**
- * Get current user's society ID
- */
+// ============================================================
+// HELPERS
+// ============================================================
+
 const getSocietyId = (req) => {
   return req.user?.society_id || null;
 };
 
 
-/**
- * @desc    Verify Razorpay payment and update maintenance
- * @route   POST /api/payment/verify
- * @access  Private
- */
+const isSuperAdmin = (req) => {
+  return req.user?.role === 'super_admin';
+};
+
+
+const isAdminOrManager = (req) => {
+  return [
+    'admin',
+    'manager'
+  ].includes(req.user?.role);
+};
+
+
+const isValidObjectId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
+
+
+// ============================================================
+// VERIFY PAYMENT
+// ============================================================
+
 exports.verifyPayment = async (
   req,
   res,
   next
 ) => {
   try {
+
     const {
       razorpay_order_id,
       razorpay_payment_id,
@@ -42,8 +67,10 @@ exports.verifyPayment = async (
       maintenance_id
     } = req.body;
 
+
     const societyId =
       getSocietyId(req);
+
 
     if (!societyId) {
       return res.status(400).json({
@@ -53,7 +80,7 @@ exports.verifyPayment = async (
       });
     }
 
-    // Validate required fields
+
     if (
       !razorpay_order_id ||
       !razorpay_payment_id ||
@@ -67,13 +94,13 @@ exports.verifyPayment = async (
       });
     }
 
-    // IMPORTANT:
-    // Find maintenance only inside current society.
+
     const maintenance =
       await Maintenance.findOne({
         _id: maintenance_id,
         society_id: societyId
       });
+
 
     if (!maintenance) {
       return res.status(404).json({
@@ -83,7 +110,7 @@ exports.verifyPayment = async (
       });
     }
 
-    // Payment must belong to current user
+
     if (
       maintenance.user_id.toString() !==
       req.user._id.toString()
@@ -95,7 +122,7 @@ exports.verifyPayment = async (
       });
     }
 
-    // Verify order ID
+
     if (
       maintenance.razorpay_order_id !==
       razorpay_order_id
@@ -107,7 +134,7 @@ exports.verifyPayment = async (
       });
     }
 
-    // Check already paid
+
     if (
       maintenance.status === 'paid'
     ) {
@@ -118,11 +145,12 @@ exports.verifyPayment = async (
       });
     }
 
-    // Verify Razorpay signature
+
     const body =
       razorpay_order_id +
       '|' +
       razorpay_payment_id;
+
 
     const expectedSignature =
       crypto
@@ -130,14 +158,14 @@ exports.verifyPayment = async (
           'sha256',
           process.env.RAZORPAY_KEY_SECRET
         )
-        .update(body.toString())
+        .update(body)
         .digest('hex');
 
-    const isValid =
-      expectedSignature ===
-      razorpay_signature;
 
-    if (!isValid) {
+    if (
+      expectedSignature !==
+      razorpay_signature
+    ) {
       return res.status(400).json({
         success: false,
         message:
@@ -145,28 +173,28 @@ exports.verifyPayment = async (
       });
     }
 
-    // Update maintenance
+
     maintenance.status = 'paid';
 
     maintenance.razorpay_payment_id =
       razorpay_payment_id;
 
+
     await maintenance.save();
 
-    // Check duplicate payment log
-    const existingLog =
+
+    let paymentLog =
       await PaymentLog.findOne({
         transaction_id:
           razorpay_payment_id
       });
 
-    let paymentLog;
 
-    if (existingLog) {
-      paymentLog = existingLog;
-    } else {
+    if (!paymentLog) {
+
       paymentLog =
         await PaymentLog.create({
+
           society_id:
             societyId,
 
@@ -202,13 +230,16 @@ exports.verifyPayment = async (
         });
     }
 
-    // Send confirmation email
+
     if (
       emailService &&
       emailService.sendPaymentConfirmation
     ) {
+
       try {
+
         await emailService.sendPaymentConfirmation({
+
           email:
             req.user.email,
 
@@ -232,22 +263,31 @@ exports.verifyPayment = async (
 
           payment_date:
             new Date()
+
         });
+
       } catch (emailError) {
+
         console.error(
           'Failed to send payment confirmation email:',
           emailError
         );
+
       }
     }
 
+
     return res.status(200).json({
+
       success: true,
+
       message:
         'Payment verified successfully',
 
       data: {
+
         maintenance: {
+
           id:
             maintenance._id,
 
@@ -262,9 +302,11 @@ exports.verifyPayment = async (
 
           year:
             maintenance.year
+
         },
 
         payment: {
+
           id:
             paymentLog._id,
 
@@ -273,11 +315,15 @@ exports.verifyPayment = async (
 
           payment_date:
             paymentLog.payment_date
+
         }
+
       }
+
     });
 
   } catch (error) {
+
     console.error(
       'Error verifying payment:',
       error
@@ -288,21 +334,657 @@ exports.verifyPayment = async (
 };
 
 
-/**
- * @desc    Handle Razorpay webhook events
- * @route   POST /api/payment/webhook
- * @access  Public
- */
+// ============================================================
+// GET ALL PAYMENTS
+// Super Admin = ALL SOCIETIES
+// Manager/Admin = OWN SOCIETY
+// ============================================================
+
+exports.getAllPayments = async (
+  req,
+  res,
+  next
+) => {
+
+  try {
+
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      society_id,
+      search,
+      sortBy = 'payment_date',
+      order = 'desc'
+    } = req.query;
+
+
+    const pageNumber =
+      Math.max(
+        parseInt(page) || 1,
+        1
+      );
+
+
+    const limitNumber =
+      Math.min(
+        Math.max(
+          parseInt(limit) || 20,
+          1
+        ),
+        100
+      );
+
+
+    const query = {};
+
+
+    // ========================================================
+    // SOCIETY SCOPE
+    // ========================================================
+
+    if (isSuperAdmin(req)) {
+
+      if (society_id) {
+
+        if (
+          !isValidObjectId(
+            society_id
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Invalid society ID'
+          });
+        }
+
+        query.society_id =
+          society_id;
+      }
+
+    } else {
+
+      const currentSociety =
+        getSocietyId(req);
+
+      if (!currentSociety) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'User is not assigned to any society'
+        });
+      }
+
+      query.society_id =
+        currentSociety;
+    }
+
+
+    // ========================================================
+    // STATUS FILTER
+    // ========================================================
+
+    if (status) {
+      query.status = status;
+    }
+
+
+    // ========================================================
+    // SEARCH
+    // ========================================================
+
+    if (search) {
+
+      const regex =
+        new RegExp(
+          search,
+          'i'
+        );
+
+      query.$or = [
+        {
+          transaction_id:
+            regex
+        },
+        {
+          razorpay_order_id:
+            regex
+        },
+        {
+          flat_no:
+            regex
+        }
+      ];
+    }
+
+
+    const total =
+      await PaymentLog.countDocuments(
+        query
+      );
+
+
+    const sortOrder =
+      order === 'asc'
+        ? 1
+        : -1;
+
+
+    const allowedSortFields = [
+      'payment_date',
+      'amount',
+      'created_at',
+      'month',
+      'year'
+    ];
+
+
+    const safeSortBy =
+      allowedSortFields.includes(
+        sortBy
+      )
+        ? sortBy
+        : 'payment_date';
+
+
+    const sort = {
+      [safeSortBy]:
+        sortOrder
+    };
+
+
+    const payments =
+      await PaymentLog.find(query)
+        .populate(
+          'user_id',
+          'name email phone flat_no role'
+        )
+        .populate(
+          'society_id',
+          'name society_code city state'
+        )
+        .populate(
+          'maintenance_id',
+          'month year amount total_amount status'
+        )
+        .sort(sort)
+        .skip(
+          (pageNumber - 1) *
+            limitNumber
+        )
+        .limit(limitNumber)
+        .lean();
+
+
+    return res.status(200).json({
+
+      success: true,
+
+      data: payments,
+
+      pagination: {
+
+        current:
+          pageNumber,
+
+        pages:
+          Math.ceil(
+            total /
+              limitNumber
+          ),
+
+        total,
+
+        limit:
+          limitNumber
+
+      }
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Error fetching all payments:',
+      error
+    );
+
+    next(error);
+  }
+};
+
+
+// ============================================================
+// PAYMENT STATS
+// Super Admin = ALL SOCIETIES
+// Manager/Admin = OWN SOCIETY
+// ============================================================
+
+exports.getPaymentStats = async (
+  req,
+  res,
+  next
+) => {
+
+  try {
+
+    const {
+      society_id
+    } = req.query;
+
+
+    const match = {};
+
+
+    // ========================================================
+    // SOCIETY SCOPE
+    // ========================================================
+
+    if (isSuperAdmin(req)) {
+
+      if (society_id) {
+
+        if (
+          !isValidObjectId(
+            society_id
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Invalid society ID'
+          });
+        }
+
+        match.society_id =
+          new mongoose.Types.ObjectId(
+            society_id
+          );
+      }
+
+    } else {
+
+      const currentSociety =
+        getSocietyId(req);
+
+      if (!currentSociety) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'User is not assigned to any society'
+        });
+      }
+
+      match.society_id =
+        new mongoose.Types.ObjectId(
+          currentSociety.toString()
+        );
+    }
+
+
+    const result =
+      await PaymentLog.aggregate([
+
+        {
+          $match:
+            match
+        },
+
+        {
+          $group: {
+
+            _id: null,
+
+            totalPayments: {
+              $sum: 1
+            },
+
+            totalAmount: {
+              $sum: {
+                $ifNull: [
+                  '$amount',
+                  0
+                ]
+              }
+            }
+
+          }
+        }
+
+      ]);
+
+
+    const stats =
+      result[0] || {
+        totalPayments: 0,
+        totalAmount: 0
+      };
+
+
+    return res.status(200).json({
+
+      success: true,
+
+      data: {
+
+        totalPayments:
+          stats.totalPayments,
+
+        totalAmount:
+          stats.totalAmount
+
+      }
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Error fetching payment stats:',
+      error
+    );
+
+    next(error);
+  }
+};
+
+
+// ============================================================
+// GET PAYMENT DETAILS
+// ============================================================
+
+exports.getPaymentDetails = async (
+  req,
+  res,
+  next
+) => {
+
+  try {
+
+    const {
+      paymentId
+    } = req.params;
+
+
+    if (
+      !isValidObjectId(
+        paymentId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid payment ID'
+      });
+    }
+
+
+    const query = {
+      _id: paymentId
+    };
+
+
+    // Super Admin can access
+    // payments from any society.
+    if (
+      !isSuperAdmin(req)
+    ) {
+
+      const societyId =
+        getSocietyId(req);
+
+      if (!societyId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'User is not assigned to any society'
+        });
+      }
+
+      query.society_id =
+        societyId;
+    }
+
+
+    const payment =
+      await PaymentLog.findOne(
+        query
+      )
+        .populate(
+          'user_id',
+          'name email flat_no phone role'
+        )
+        .populate(
+          'society_id',
+          'name society_code city state'
+        )
+        .lean();
+
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Payment not found'
+      });
+    }
+
+
+    const isOwner =
+      payment.user_id &&
+      payment.user_id._id.toString() ===
+        req.user._id.toString();
+
+
+    if (
+      !isSuperAdmin(req) &&
+      !isAdminOrManager(req) &&
+      !isOwner
+    ) {
+
+      return res.status(403).json({
+        success: false,
+        message:
+          'Not authorized to view this payment'
+      });
+    }
+
+
+    return res.status(200).json({
+
+      success: true,
+
+      data:
+        payment
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Error fetching payment details:',
+      error
+    );
+
+    next(error);
+  }
+};
+
+
+// ============================================================
+// PAYMENT STATUS
+// ============================================================
+
+exports.getPaymentStatus = async (
+  req,
+  res,
+  next
+) => {
+
+  try {
+
+    const {
+      orderId
+    } = req.params;
+
+
+    const query = {
+      razorpay_order_id:
+        orderId
+    };
+
+
+    if (
+      !isSuperAdmin(req)
+    ) {
+
+      const societyId =
+        getSocietyId(req);
+
+      if (!societyId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'User is not assigned to any society'
+        });
+      }
+
+      query.society_id =
+        societyId;
+    }
+
+
+    const maintenance =
+      await Maintenance.findOne(
+        query
+      );
+
+
+    if (!maintenance) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Payment order not found'
+      });
+    }
+
+
+    const isOwner =
+      maintenance.user_id.toString() ===
+      req.user._id.toString();
+
+
+    if (
+      !isSuperAdmin(req) &&
+      !isAdminOrManager(req) &&
+      !isOwner
+    ) {
+
+      return res.status(403).json({
+        success: false,
+        message:
+          'Not authorized to view this payment status'
+      });
+    }
+
+
+    const order =
+      await razorpay.orders.fetch(
+        orderId
+      );
+
+
+    const payments =
+      await razorpay.orders.fetchPayments(
+        orderId
+      );
+
+
+    return res.status(200).json({
+
+      success: true,
+
+      data: {
+
+        order: {
+
+          id:
+            order.id,
+
+          amount:
+            order.amount / 100,
+
+          status:
+            order.status,
+
+          created_at:
+            new Date(
+              order.created_at *
+              1000
+            )
+
+        },
+
+        payments:
+          payments.items.map(
+            (p) => ({
+
+              id:
+                p.id,
+
+              amount:
+                p.amount / 100,
+
+              status:
+                p.status,
+
+              method:
+                p.method,
+
+              created_at:
+                new Date(
+                  p.created_at *
+                  1000
+                )
+
+            })
+          )
+
+      }
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Error fetching payment status:',
+      error
+    );
+
+    next(error);
+  }
+};
+
+
+// ============================================================
+// RAZORPAY WEBHOOK
+// ============================================================
+
 exports.handleWebhook = async (
   req,
   res,
   next
 ) => {
+
   try {
+
     const webhookSecret =
       process.env.RAZORPAY_WEBHOOK_SECRET;
 
+
     if (!webhookSecret) {
+
       console.log(
         'Razorpay webhook secret not configured'
       );
@@ -312,12 +994,15 @@ exports.handleWebhook = async (
       });
     }
 
+
     const signature =
       req.headers[
         'x-razorpay-signature'
       ];
 
+
     if (!signature) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -325,8 +1010,12 @@ exports.handleWebhook = async (
       });
     }
 
+
     const body =
-      JSON.stringify(req.body);
+      JSON.stringify(
+        req.body
+      );
+
 
     const expectedSignature =
       crypto
@@ -337,10 +1026,12 @@ exports.handleWebhook = async (
         .update(body)
         .digest('hex');
 
+
     if (
       signature !==
       expectedSignature
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -348,49 +1039,66 @@ exports.handleWebhook = async (
       });
     }
 
+
     const event =
       req.body.event;
 
+
     const payload =
       req.body.payload;
+
 
     console.log(
       'Received Razorpay webhook:',
       event
     );
 
+
     switch (event) {
 
       case 'payment.captured':
+
         await handlePaymentCaptured(
           payload
         );
+
         break;
 
+
       case 'payment.failed':
+
         await handlePaymentFailed(
           payload
         );
+
         break;
 
+
       case 'order.paid':
+
         await handleOrderPaid(
           payload
         );
+
         break;
 
+
       default:
+
         console.log(
           'Unhandled webhook event:',
           event
         );
+
     }
+
 
     return res.status(200).json({
       received: true
     });
 
   } catch (error) {
+
     console.error(
       'Error handling payment webhook:',
       error
@@ -398,36 +1106,44 @@ exports.handleWebhook = async (
 
     return res.status(200).json({
       received: true,
-      error: error.message
+      error:
+        error.message
     });
   }
 };
 
 
-/**
- * Handle payment.captured webhook
- */
+// ============================================================
+// PAYMENT CAPTURED
+// ============================================================
+
 async function handlePaymentCaptured(
   payload
 ) {
+
   try {
+
     const payment =
       payload.payment.entity;
+
 
     const orderId =
       payment.order_id;
 
+
     const paymentId =
       payment.id;
 
-    // Find maintenance by Razorpay order
+
     const maintenance =
       await Maintenance.findOne({
         razorpay_order_id:
           orderId
       });
 
+
     if (!maintenance) {
+
       console.log(
         'Maintenance not found for order:',
         orderId
@@ -436,8 +1152,9 @@ async function handlePaymentCaptured(
       return;
     }
 
-    // Must have society
+
     if (!maintenance.society_id) {
+
       console.log(
         'Maintenance has no society:',
         maintenance._id
@@ -446,10 +1163,12 @@ async function handlePaymentCaptured(
       return;
     }
 
-    // Already processed
+
     if (
-      maintenance.status === 'paid'
+      maintenance.status ===
+      'paid'
     ) {
+
       console.log(
         'Maintenance already paid:',
         maintenance._id
@@ -458,24 +1177,29 @@ async function handlePaymentCaptured(
       return;
     }
 
-    // Update maintenance
-    maintenance.status = 'paid';
+
+    maintenance.status =
+      'paid';
+
 
     maintenance.razorpay_payment_id =
       paymentId;
 
+
     await maintenance.save();
 
-    // Check duplicate payment
+
     const existingLog =
       await PaymentLog.findOne({
         transaction_id:
           paymentId
       });
 
+
     if (!existingLog) {
 
       await PaymentLog.create({
+
         society_id:
           maintenance.society_id,
 
@@ -511,8 +1235,11 @@ async function handlePaymentCaptured(
 
         razorpay_signature:
           'webhook'
+
       });
+
     }
+
 
     console.log(
       'Payment captured via webhook:',
@@ -520,53 +1247,61 @@ async function handlePaymentCaptured(
     );
 
   } catch (error) {
+
     console.error(
       'Error handling payment.captured:',
       error
     );
+
   }
 }
 
 
-/**
- * Handle payment.failed webhook
- */
+// ============================================================
+// PAYMENT FAILED
+// ============================================================
+
 async function handlePaymentFailed(
   payload
 ) {
+
   try {
+
     const payment =
       payload.payment.entity;
 
-    const orderId =
-      payment.order_id;
 
     console.log(
       'Payment failed for order:',
-      orderId,
-
+      payment.order_id,
       'Reason:',
       payment.error_description
     );
 
   } catch (error) {
+
     console.error(
       'Error handling payment.failed:',
       error
     );
+
   }
 }
 
 
-/**
- * Handle order.paid webhook
- */
+// ============================================================
+// ORDER PAID
+// ============================================================
+
 async function handleOrderPaid(
   payload
 ) {
+
   try {
+
     const order =
       payload.order.entity;
+
 
     console.log(
       'Order paid:',
@@ -574,231 +1309,11 @@ async function handleOrderPaid(
     );
 
   } catch (error) {
+
     console.error(
       'Error handling order.paid:',
       error
     );
+
   }
 }
-
-
-/**
- * @desc    Get payment details by ID
- * @route   GET /api/payment/:paymentId
- * @access  Private
- */
-exports.getPaymentDetails = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const {
-      paymentId
-    } = req.params;
-
-    const societyId =
-      getSocietyId(req);
-
-    if (!societyId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'User is not assigned to any society'
-      });
-    }
-
-    // IMPORTANT:
-    // Payment must belong to current society.
-    const payment =
-      await PaymentLog.findOne({
-        _id: paymentId,
-        society_id: societyId
-      })
-        .populate(
-          'user_id',
-          'name email flat_no phone role'
-        )
-        .lean();
-
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message:
-          'Payment not found in your society'
-      });
-    }
-
-    // Resident can only see own payment.
-    // Manager/Admin can see payments of own society.
-    const isOwner =
-      payment.user_id &&
-      payment.user_id._id.toString() ===
-        req.user._id.toString();
-
-    const isAdminOrManager =
-      ['admin', 'manager'].includes(
-        req.user.role
-      );
-
-    if (
-      !isOwner &&
-      !isAdminOrManager
-    ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          'Not authorized to view this payment'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: payment
-    });
-
-  } catch (error) {
-    console.error(
-      'Error fetching payment details:',
-      error
-    );
-
-    next(error);
-  }
-};
-
-
-/**
- * @desc    Fetch Razorpay payment status
- * @route   GET /api/payment/status/:orderId
- * @access  Private
- */
-exports.getPaymentStatus = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const {
-      orderId
-    } = req.params;
-
-    const societyId =
-      getSocietyId(req);
-
-    if (!societyId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'User is not assigned to any society'
-      });
-    }
-
-    // IMPORTANT:
-    // First verify that this Razorpay order
-    // belongs to current society.
-    const maintenance =
-      await Maintenance.findOne({
-        razorpay_order_id:
-          orderId,
-
-        society_id:
-          societyId
-      });
-
-    if (!maintenance) {
-      return res.status(404).json({
-        success: false,
-        message:
-          'Payment order not found in your society'
-      });
-    }
-
-    // Resident can only check own order.
-    const isOwner =
-      maintenance.user_id.toString() ===
-      req.user._id.toString();
-
-    const isAdminOrManager =
-      ['admin', 'manager'].includes(
-        req.user.role
-      );
-
-    if (
-      !isOwner &&
-      !isAdminOrManager
-    ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          'Not authorized to view this payment status'
-      });
-    }
-
-    // Fetch order from Razorpay
-    const order =
-      await razorpay.orders.fetch(
-        orderId
-      );
-
-    // Fetch payments
-    const payments =
-      await razorpay.orders.fetchPayments(
-        orderId
-      );
-
-    return res.status(200).json({
-      success: true,
-
-      data: {
-        order: {
-          id:
-            order.id,
-
-          amount:
-            order.amount / 100,
-
-          status:
-            order.status,
-
-          created_at:
-            new Date(
-              order.created_at *
-              1000
-            )
-        },
-
-        payments:
-          payments.items.map(
-            (p) => ({
-              id:
-                p.id,
-
-              amount:
-                p.amount / 100,
-
-              status:
-                p.status,
-
-              method:
-                p.method,
-
-              created_at:
-                new Date(
-                  p.created_at *
-                  1000
-                )
-            })
-          )
-      }
-    });
-
-  } catch (error) {
-    console.error(
-      'Error fetching payment status:',
-      error
-    );
-
-    next(error);
-  }
-};
