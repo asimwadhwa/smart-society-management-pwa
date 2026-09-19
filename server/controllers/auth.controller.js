@@ -7,34 +7,65 @@ const crypto = require('crypto');
 // ============================================================
 // JWT TOKEN
 // ============================================================
-const generateToken = (userId) => {
+
+const generateToken = (
+  userId
+) => {
+
   return jwt.sign(
-    { user_id: userId },
+    {
+      user_id: userId
+    },
     process.env.JWT_SECRET,
     {
-      expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+      expiresIn:
+        process.env.JWT_EXPIRES_IN ||
+        '7d'
     }
   );
 };
 
+
 // ============================================================
 // SET TOKEN COOKIE
 // ============================================================
-const setTokenCookie = (res, token) => {
-  res.cookie('token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite:
-      process.env.NODE_ENV === 'production'
-        ? 'none'
-        : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000
-  });
+
+const setTokenCookie = (
+  res,
+  token
+) => {
+
+  res.cookie(
+    'token',
+    token,
+    {
+      httpOnly: true,
+
+      secure:
+        process.env.NODE_ENV ===
+        'production',
+
+      sameSite:
+        process.env.NODE_ENV ===
+        'production'
+          ? 'none'
+          : 'lax',
+
+      maxAge:
+        7 *
+        24 *
+        60 *
+        60 *
+        1000
+    }
+  );
 };
+
 
 // ============================================================
 // VALIDATE USER DETAILS
 // ============================================================
+
 const validateUserDetails = ({
   name,
   email,
@@ -42,6 +73,7 @@ const validateUserDetails = ({
   flat_no,
   phone
 }) => {
+
   const errors = [];
 
   if (
@@ -96,15 +128,19 @@ const validateUserDetails = ({
   return errors;
 };
 
+
 // ============================================================
 // SUPER ADMIN SETUP
 // ============================================================
+
 exports.superAdminSetup = async (
   req,
   res,
   next
 ) => {
+
   try {
+
     const {
       setup_key,
       name,
@@ -114,13 +150,15 @@ exports.superAdminSetup = async (
     } = req.body;
 
     // --------------------------------------------------------
-    // Check setup key
+    // SETUP KEY
     // --------------------------------------------------------
+
     if (
       !setup_key ||
       setup_key !==
         process.env.SUPER_ADMIN_SETUP_KEY
     ) {
+
       return res.status(403).json({
         success: false,
         message:
@@ -129,14 +167,16 @@ exports.superAdminSetup = async (
     }
 
     // --------------------------------------------------------
-    // Check if super admin already exists
+    // CHECK EXISTING SUPER ADMIN
     // --------------------------------------------------------
+
     const existingSuperAdmin =
       await User.findOne({
         role: 'super_admin'
       });
 
     if (existingSuperAdmin) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -145,12 +185,14 @@ exports.superAdminSetup = async (
     }
 
     // --------------------------------------------------------
-    // Validate
+    // VALIDATION
     // --------------------------------------------------------
+
     if (
       typeof name !== 'string' ||
       name.trim().length < 2
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -164,6 +206,7 @@ exports.superAdminSetup = async (
         email.trim()
       )
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -175,6 +218,7 @@ exports.superAdminSetup = async (
       typeof password !== 'string' ||
       password.length < 6
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -188,6 +232,7 @@ exports.superAdminSetup = async (
         phone.trim()
       )
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -199,14 +244,16 @@ exports.superAdminSetup = async (
       email.trim().toLowerCase();
 
     // --------------------------------------------------------
-    // Check email
+    // EMAIL
     // --------------------------------------------------------
+
     const existingEmail =
       await User.findOne({
         email: cleanEmail
       });
 
     if (existingEmail) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -215,8 +262,9 @@ exports.superAdminSetup = async (
     }
 
     // --------------------------------------------------------
-    // Create Super Admin
+    // CREATE SUPER ADMIN
     // --------------------------------------------------------
+
     const user =
       await User.create({
         name: name.trim(),
@@ -230,7 +278,9 @@ exports.superAdminSetup = async (
       });
 
     const token =
-      generateToken(user._id);
+      generateToken(
+        user._id
+      );
 
     setTokenCookie(
       res,
@@ -242,7 +292,8 @@ exports.superAdminSetup = async (
       message:
         'Super Admin registered successfully',
       data: {
-        user: user.toJSON(),
+        user:
+          user.toJSON(),
         token
       }
     });
@@ -252,6 +303,7 @@ exports.superAdminSetup = async (
     if (
       error.code === 11000
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -263,15 +315,37 @@ exports.superAdminSetup = async (
   }
 };
 
+
 // ============================================================
 // MANAGER SETUP BY SUPER ADMIN
 // ============================================================
+
 exports.managerSetup = async (
   req,
   res,
   next
 ) => {
+
   try {
+
+    // ========================================================
+    // IMPORTANT:
+    // ONLY SUPER ADMIN
+    // ========================================================
+
+    if (
+      !req.user ||
+      req.user.role !==
+        'super_admin'
+    ) {
+
+      return res.status(403).json({
+        success: false,
+        message:
+          'Only Super Admin can create society managers'
+      });
+    }
+
     const {
       society_id,
       name,
@@ -281,10 +355,12 @@ exports.managerSetup = async (
       phone
     } = req.body;
 
-    // --------------------------------------------------------
-    // Society ID required
-    // --------------------------------------------------------
+    // ========================================================
+    // SOCIETY ID
+    // ========================================================
+
     if (!society_id) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -292,9 +368,30 @@ exports.managerSetup = async (
       });
     }
 
-    // --------------------------------------------------------
-    // Find active society
-    // --------------------------------------------------------
+    // ========================================================
+    // VALID SOCIETY ID
+    // ========================================================
+
+    const mongoose =
+      require('mongoose');
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        society_id
+      )
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid society ID'
+      });
+    }
+
+    // ========================================================
+    // FIND ACTIVE SOCIETY
+    // ========================================================
+
     const society =
       await Society.findOne({
         _id: society_id,
@@ -302,6 +399,7 @@ exports.managerSetup = async (
       });
 
     if (!society) {
+
       return res.status(404).json({
         success: false,
         message:
@@ -309,9 +407,10 @@ exports.managerSetup = async (
       });
     }
 
-    // --------------------------------------------------------
-    // Validate details
-    // --------------------------------------------------------
+    // ========================================================
+    // VALIDATE MANAGER DETAILS
+    // ========================================================
+
     const errors =
       validateUserDetails({
         name,
@@ -321,16 +420,22 @@ exports.managerSetup = async (
         phone
       });
 
-    if (errors.length > 0) {
+    if (
+      errors.length > 0
+    ) {
+
       return res.status(400).json({
         success: false,
-        message: errors[0],
+        message:
+          errors[0],
         errors
       });
     }
 
     const cleanEmail =
-      email.trim().toLowerCase();
+      email
+        .trim()
+        .toLowerCase();
 
     const cleanFlatNo =
       flat_no.trim();
@@ -338,92 +443,139 @@ exports.managerSetup = async (
     const cleanPhone =
       phone.trim();
 
-    // --------------------------------------------------------
-    // Check email
-    // --------------------------------------------------------
+    // ========================================================
+    // CHECK GLOBAL EMAIL
+    // ========================================================
+
     const existingEmail =
       await User.findOne({
-        email: cleanEmail
+        email:
+          cleanEmail
       });
 
     if (existingEmail) {
+
       return res.status(400).json({
         success: false,
         message:
-          'Email is already registered'
+          'Email is already registered. Please use another email.'
       });
     }
 
-    // --------------------------------------------------------
-    // Check manager already exists
-    // --------------------------------------------------------
+    // ========================================================
+    // CHECK MANAGER FOR THIS SOCIETY
+    //
+    // IMPORTANT:
+    // Do NOT check only is_active.
+    // A society can have only ONE manager record.
+    // ========================================================
+
     const existingManager =
       await User.findOne({
-        society_id: society._id,
-        role: 'manager',
-        is_active: true
+        society_id:
+          society._id,
+        role:
+          'manager'
       });
 
     if (existingManager) {
+
       return res.status(400).json({
         success: false,
         message:
-          'Manager already exists for this society'
+          `Manager already exists for ${society.name}`
       });
     }
 
-    // --------------------------------------------------------
-    // Check flat
-    // --------------------------------------------------------
+    // ========================================================
+    // CHECK FLAT IN THIS SOCIETY
+    // ========================================================
+
     const existingFlat =
       await User.findOne({
-        society_id: society._id,
-        flat_no: cleanFlatNo,
-        is_active: true
+        society_id:
+          society._id,
+
+        flat_no:
+          cleanFlatNo,
+
+        is_active:
+          true
       });
 
     if (existingFlat) {
+
       return res.status(400).json({
         success: false,
         message:
-          'This flat is already registered in this society'
+          `Flat ${cleanFlatNo} is already registered in ${society.name}`
       });
     }
 
-    // --------------------------------------------------------
-    // Create Manager
-    // --------------------------------------------------------
+    // ========================================================
+    // CREATE MANAGER
+    // ========================================================
+
     const manager =
       await User.create({
-        name: name.trim(),
-        email: cleanEmail,
-        password_hash: password,
-        flat_no: cleanFlatNo,
-        phone: cleanPhone,
-        society_id: society._id,
-        role: 'manager',
-        is_active: true,
-        is_verified: true
+
+        name:
+          name.trim(),
+
+        email:
+          cleanEmail,
+
+        password_hash:
+          password,
+
+        flat_no:
+          cleanFlatNo,
+
+        phone:
+          cleanPhone,
+
+        society_id:
+          society._id,
+
+        role:
+          'manager',
+
+        is_active:
+          true,
+
+        is_verified:
+          true
       });
 
-    const token =
-      generateToken(manager._id);
-
-    setTokenCookie(
-      res,
-      token
-    );
+    // ========================================================
+    // VERY IMPORTANT
+    //
+    // DO NOT generate token.
+    // DO NOT set Super Admin cookie.
+    //
+    // Super Admin must remain logged in.
+    // ========================================================
 
     return res.status(201).json({
+
       success: true,
+
       message:
-        'Manager registered successfully',
+        `Manager created successfully for ${society.name}`,
+
       data: {
-        user: manager.toJSON(),
-        token,
+
+        user:
+          manager.toJSON(),
+
         society: {
-          _id: society._id,
-          name: society.name,
+
+          _id:
+            society._id,
+
+          name:
+            society.name,
+
           society_code:
             society.society_code
         }
@@ -432,10 +584,16 @@ exports.managerSetup = async (
 
   } catch (error) {
 
+    console.error(
+      'Manager setup error:',
+      error
+    );
+
     if (
       error.name ===
       'ValidationError'
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -443,15 +601,18 @@ exports.managerSetup = async (
             error.errors
           )
             .map(
-              err => err.message
+              err =>
+                err.message
             )
             .join('. ')
       });
     }
 
     if (
-      error.code === 11000
+      error.code ===
+      11000
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -463,15 +624,18 @@ exports.managerSetup = async (
   }
 };
 
+
 // ============================================================
 // CHECK MANAGER EXISTS
 // ============================================================
+
 exports.checkManagerExists =
   async (
     req,
     res,
     next
   ) => {
+
     try {
 
       const {
@@ -479,6 +643,7 @@ exports.checkManagerExists =
       } = req.query;
 
       if (!society_id) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -489,28 +654,33 @@ exports.checkManagerExists =
       const manager =
         await User.findOne({
           society_id,
-          role: 'manager',
-          is_active: true
+          role:
+            'manager'
         }).select('_id');
 
       return res.status(200).json({
         success: true,
-        exists: !!manager
+        exists:
+          !!manager
       });
 
     } catch (error) {
+
       next(error);
     }
   };
 
+
 // ============================================================
 // REGISTER RESIDENT
 // ============================================================
+
 exports.register = async (
   req,
   res,
   next
 ) => {
+
   try {
 
     const {
@@ -522,9 +692,6 @@ exports.register = async (
       society_code
     } = req.body;
 
-    // --------------------------------------------------------
-    // Validate user details
-    // --------------------------------------------------------
     const errors =
       validateUserDetails({
         name,
@@ -534,22 +701,28 @@ exports.register = async (
         phone
       });
 
-    if (errors.length > 0) {
+    if (
+      errors.length > 0
+    ) {
+
       return res.status(400).json({
         success: false,
-        message: errors[0],
+        message:
+          errors[0],
         errors
       });
     }
 
-    // --------------------------------------------------------
-    // Society code required
-    // --------------------------------------------------------
+    // ========================================================
+    // SOCIETY CODE
+    // ========================================================
+
     if (
       typeof society_code !==
         'string' ||
       !society_code.trim()
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -562,17 +735,20 @@ exports.register = async (
         .trim()
         .toUpperCase();
 
-    // --------------------------------------------------------
-    // Find active society
-    // --------------------------------------------------------
+    // ========================================================
+    // FIND SOCIETY
+    // ========================================================
+
     const society =
       await Society.findOne({
         society_code:
           cleanSocietyCode,
-        is_active: true
+        is_active:
+          true
       });
 
     if (!society) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -584,7 +760,9 @@ exports.register = async (
       society._id;
 
     const cleanEmail =
-      email.trim().toLowerCase();
+      email
+        .trim()
+        .toLowerCase();
 
     const cleanFlatNo =
       flat_no.trim();
@@ -592,15 +770,18 @@ exports.register = async (
     const cleanPhone =
       phone.trim();
 
-    // --------------------------------------------------------
-    // Check email
-    // --------------------------------------------------------
+    // ========================================================
+    // EMAIL
+    // ========================================================
+
     const existingEmail =
       await User.findOne({
-        email: cleanEmail
+        email:
+          cleanEmail
       });
 
     if (existingEmail) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -608,17 +789,24 @@ exports.register = async (
       });
     }
 
-    // --------------------------------------------------------
-    // Check flat in same society
-    // --------------------------------------------------------
+    // ========================================================
+    // FLAT
+    // ========================================================
+
     const existingFlat =
       await User.findOne({
-        society_id: societyId,
-        flat_no: cleanFlatNo,
-        is_active: true
+        society_id:
+          societyId,
+
+        flat_no:
+          cleanFlatNo,
+
+        is_active:
+          true
       });
 
     if (existingFlat) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -626,17 +814,24 @@ exports.register = async (
       });
     }
 
-    // --------------------------------------------------------
-    // Manager must exist first
-    // --------------------------------------------------------
+    // ========================================================
+    // MANAGER REQUIRED
+    // ========================================================
+
     const managerExists =
       await User.findOne({
-        society_id: societyId,
-        role: 'manager',
-        is_active: true
+        society_id:
+          societyId,
+
+        role:
+          'manager',
+
+        is_active:
+          true
       });
 
     if (!managerExists) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -644,24 +839,45 @@ exports.register = async (
       });
     }
 
-    // --------------------------------------------------------
-    // Create Resident
-    // --------------------------------------------------------
+    // ========================================================
+    // CREATE RESIDENT
+    // ========================================================
+
     const user =
       await User.create({
-        name: name.trim(),
-        email: cleanEmail,
-        password_hash: password,
-        flat_no: cleanFlatNo,
-        phone: cleanPhone,
-        society_id: societyId,
-        role: 'resident',
-        is_active: true,
-        is_verified: true
+
+        name:
+          name.trim(),
+
+        email:
+          cleanEmail,
+
+        password_hash:
+          password,
+
+        flat_no:
+          cleanFlatNo,
+
+        phone:
+          cleanPhone,
+
+        society_id:
+          societyId,
+
+        role:
+          'resident',
+
+        is_active:
+          true,
+
+        is_verified:
+          true
       });
 
     const token =
-      generateToken(user._id);
+      generateToken(
+        user._id
+      );
 
     setTokenCookie(
       res,
@@ -669,15 +885,27 @@ exports.register = async (
     );
 
     return res.status(201).json({
+
       success: true,
+
       message:
         'Registration successful',
+
       data: {
-        user: user.toJSON(),
+
+        user:
+          user.toJSON(),
+
         token,
+
         society: {
-          _id: society._id,
-          name: society.name,
+
+          _id:
+            society._id,
+
+          name:
+            society.name,
+
           society_code:
             society.society_code
         }
@@ -690,6 +918,7 @@ exports.register = async (
       error.name ===
       'ValidationError'
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -697,15 +926,18 @@ exports.register = async (
             error.errors
           )
             .map(
-              err => err.message
+              err =>
+                err.message
             )
             .join('. ')
       });
     }
 
     if (
-      error.code === 11000
+      error.code ===
+      11000
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -717,14 +949,17 @@ exports.register = async (
   }
 };
 
+
 // ============================================================
 // LOGIN
 // ============================================================
+
 exports.login = async (
   req,
   res,
   next
 ) => {
+
   try {
 
     const {
@@ -733,13 +968,16 @@ exports.login = async (
       society_code
     } = req.body;
 
-    // --------------------------------------------------------
-    // Validate email
-    // --------------------------------------------------------
+    // ========================================================
+    // EMAIL
+    // ========================================================
+
     if (
-      typeof email !== 'string' ||
+      typeof email !==
+        'string' ||
       !email.trim()
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -747,13 +985,16 @@ exports.login = async (
       });
     }
 
-    // --------------------------------------------------------
-    // Validate password
-    // --------------------------------------------------------
+    // ========================================================
+    // PASSWORD
+    // ========================================================
+
     if (
-      typeof password !== 'string' ||
+      typeof password !==
+        'string' ||
       !password
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -762,19 +1003,24 @@ exports.login = async (
     }
 
     const cleanEmail =
-      email.trim().toLowerCase();
+      email
+        .trim()
+        .toLowerCase();
 
-    // --------------------------------------------------------
-    // Find user
-    // --------------------------------------------------------
+    // ========================================================
+    // FIND USER
+    // ========================================================
+
     const user =
       await User.findOne({
-        email: cleanEmail
+        email:
+          cleanEmail
       }).select(
         '+password_hash'
       );
 
     if (!user) {
+
       return res.status(401).json({
         success: false,
         message:
@@ -782,10 +1028,12 @@ exports.login = async (
       });
     }
 
-    // --------------------------------------------------------
-    // Check active status
-    // --------------------------------------------------------
+    // ========================================================
+    // ACTIVE
+    // ========================================================
+
     if (!user.is_active) {
+
       return res.status(403).json({
         success: false,
         message:
@@ -793,9 +1041,10 @@ exports.login = async (
       });
     }
 
-    // --------------------------------------------------------
+    // ========================================================
     // SUPER ADMIN LOGIN
-    // --------------------------------------------------------
+    // ========================================================
+
     if (
       user.role ===
       'super_admin'
@@ -808,6 +1057,7 @@ exports.login = async (
         );
 
       if (!passwordMatch) {
+
         return res.status(401).json({
           success: false,
           message:
@@ -816,7 +1066,9 @@ exports.login = async (
       }
 
       const token =
-        generateToken(user._id);
+        generateToken(
+          user._id
+        );
 
       setTokenCookie(
         res,
@@ -824,26 +1076,35 @@ exports.login = async (
       );
 
       return res.status(200).json({
+
         success: true,
+
         message:
           'Login successful',
+
         data: {
-          user: user.toJSON(),
+
+          user:
+            user.toJSON(),
+
           token,
-          society: null
+
+          society:
+            null
         }
       });
     }
 
-    // --------------------------------------------------------
-    // NORMAL USER LOGIN
-    // Manager / Admin / Resident / Watchman
-    // --------------------------------------------------------
+    // ========================================================
+    // NORMAL USER
+    // ========================================================
+
     if (
       typeof society_code !==
         'string' ||
       !society_code.trim()
     ) {
+
       return res.status(400).json({
         success: false,
         message:
@@ -856,17 +1117,21 @@ exports.login = async (
         .trim()
         .toUpperCase();
 
-    // --------------------------------------------------------
-    // Find active society
-    // --------------------------------------------------------
+    // ========================================================
+    // SOCIETY
+    // ========================================================
+
     const society =
       await Society.findOne({
         society_code:
           cleanSocietyCode,
-        is_active: true
+
+        is_active:
+          true
       });
 
     if (!society) {
+
       return res.status(401).json({
         success: false,
         message:
@@ -874,14 +1139,16 @@ exports.login = async (
       });
     }
 
-    // --------------------------------------------------------
-    // Check user's society
-    // --------------------------------------------------------
+    // ========================================================
+    // USER SOCIETY
+    // ========================================================
+
     if (
       !user.society_id ||
       user.society_id.toString() !==
         society._id.toString()
     ) {
+
       return res.status(401).json({
         success: false,
         message:
@@ -889,9 +1156,10 @@ exports.login = async (
       });
     }
 
-    // --------------------------------------------------------
-    // Compare password
-    // --------------------------------------------------------
+    // ========================================================
+    // PASSWORD
+    // ========================================================
+
     const passwordMatch =
       await bcrypt.compare(
         password,
@@ -899,6 +1167,7 @@ exports.login = async (
       );
 
     if (!passwordMatch) {
+
       return res.status(401).json({
         success: false,
         message:
@@ -906,11 +1175,14 @@ exports.login = async (
       });
     }
 
-    // --------------------------------------------------------
-    // Generate token
-    // --------------------------------------------------------
+    // ========================================================
+    // TOKEN
+    // ========================================================
+
     const token =
-      generateToken(user._id);
+      generateToken(
+        user._id
+      );
 
     setTokenCookie(
       res,
@@ -918,15 +1190,27 @@ exports.login = async (
     );
 
     return res.status(200).json({
+
       success: true,
+
       message:
         'Login successful',
+
       data: {
-        user: user.toJSON(),
+
+        user:
+          user.toJSON(),
+
         token,
+
         society: {
-          _id: society._id,
-          name: society.name,
+
+          _id:
+            society._id,
+
+          name:
+            society.name,
+
           society_code:
             society.society_code
         }
@@ -934,27 +1218,33 @@ exports.login = async (
     });
 
   } catch (error) {
+
     next(error);
   }
 };
 
+
 // ============================================================
 // LOGOUT
 // ============================================================
+
 exports.logout = async (
   req,
   res,
   next
 ) => {
+
   try {
 
     res.clearCookie(
       'token',
       {
         httpOnly: true,
+
         secure:
           process.env.NODE_ENV ===
           'production',
+
         sameSite:
           process.env.NODE_ENV ===
           'production'
@@ -970,19 +1260,23 @@ exports.logout = async (
     });
 
   } catch (error) {
+
     next(error);
   }
 };
 
+
 // ============================================================
 // GET CURRENT USER
 // ============================================================
+
 exports.getCurrentUser =
   async (
     req,
     res,
     next
   ) => {
+
     try {
 
       const user =
@@ -991,6 +1285,7 @@ exports.getCurrentUser =
         );
 
       if (!user) {
+
         return res.status(404).json({
           success: false,
           message:
@@ -1005,6 +1300,7 @@ exports.getCurrentUser =
           'super_admin' &&
         user.society_id
       ) {
+
         society =
           await Society.findById(
             user.society_id
@@ -1014,27 +1310,36 @@ exports.getCurrentUser =
       }
 
       return res.status(200).json({
+
         success: true,
+
         data: {
-          user: user.toJSON(),
+
+          user:
+            user.toJSON(),
+
           society
         }
       });
 
     } catch (error) {
+
       next(error);
     }
   };
 
+
 // ============================================================
 // FORGOT PASSWORD
 // ============================================================
+
 exports.forgotPassword =
   async (
     req,
     res,
     next
   ) => {
+
     try {
 
       const {
@@ -1042,9 +1347,11 @@ exports.forgotPassword =
       } = req.body;
 
       if (
-        typeof email !== 'string' ||
+        typeof email !==
+          'string' ||
         !email.trim()
       ) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1053,17 +1360,18 @@ exports.forgotPassword =
       }
 
       const cleanEmail =
-        email.trim().toLowerCase();
+        email
+          .trim()
+          .toLowerCase();
 
       const user =
         await User.findOne({
-          email: cleanEmail
+          email:
+            cleanEmail
         });
 
-      // ------------------------------------------------------
-      // Do not reveal whether email exists
-      // ------------------------------------------------------
       if (!user) {
+
         return res.status(200).json({
           success: true,
           message:
@@ -1072,6 +1380,7 @@ exports.forgotPassword =
       }
 
       if (!user.is_active) {
+
         return res.status(200).json({
           success: true,
           message:
@@ -1079,9 +1388,6 @@ exports.forgotPassword =
         });
       }
 
-      // ------------------------------------------------------
-      // Generate OTP
-      // ------------------------------------------------------
       const otp =
         crypto
           .randomInt(
@@ -1102,14 +1408,13 @@ exports.forgotPassword =
       user.reset_password_otp_expires =
         new Date(
           Date.now() +
-            10 * 60 * 1000
+            10 *
+              60 *
+              1000
         );
 
       await user.save();
 
-      // ------------------------------------------------------
-      // Send email
-      // ------------------------------------------------------
       try {
 
         if (
@@ -1121,45 +1426,58 @@ exports.forgotPassword =
             await fetch(
               'https://api.brevo.com/v3/smtp/email',
               {
-                method: 'POST',
+                method:
+                  'POST',
+
                 headers: {
-                  'accept':
+                  accept:
                     'application/json',
+
                   'api-key':
                     process.env.BREVO_API_KEY,
+
                   'content-type':
                     'application/json'
                 },
-                body: JSON.stringify({
-                  sender: {
-                    name:
-                      process.env.BREVO_SENDER_NAME ||
-                      'Smart Society Management',
-                    email:
-                      process.env.BREVO_SENDER_EMAIL
-                  },
-                  to: [
-                    {
+
+                body:
+                  JSON.stringify({
+                    sender: {
+                      name:
+                        process.env
+                          .BREVO_SENDER_NAME ||
+                        'Smart Society Management',
+
                       email:
-                        cleanEmail
-                    }
-                  ],
-                  subject:
-                    'Password Reset OTP',
-                  htmlContent: `
-                    <div style="font-family: Arial, sans-serif;">
-                      <h2>Password Reset</h2>
-                      <p>Your OTP for password reset is:</p>
-                      <h1>${otp}</h1>
-                      <p>This OTP is valid for 10 minutes.</p>
-                      <p>If you did not request this, please ignore this email.</p>
-                    </div>
-                  `
-                })
+                        process.env
+                          .BREVO_SENDER_EMAIL
+                    },
+
+                    to: [
+                      {
+                        email:
+                          cleanEmail
+                      }
+                    ],
+
+                    subject:
+                      'Password Reset OTP',
+
+                    htmlContent: `
+                      <div style="font-family: Arial, sans-serif;">
+                        <h2>Password Reset</h2>
+                        <p>Your OTP for password reset is:</p>
+                        <h1>${otp}</h1>
+                        <p>This OTP is valid for 10 minutes.</p>
+                        <p>If you did not request this, please ignore this email.</p>
+                      </div>
+                    `
+                  })
               }
             );
 
           if (!response.ok) {
+
             console.error(
               'Brevo email failed:',
               await response.text()
@@ -1168,7 +1486,6 @@ exports.forgotPassword =
 
         } else {
 
-          // Development fallback
           console.log(
             `PASSWORD RESET OTP for ${cleanEmail}: ${otp}`
           );
@@ -1180,8 +1497,6 @@ exports.forgotPassword =
           'OTP email error:',
           emailError
         );
-
-        // Do not expose internal email error
       }
 
       return res.status(200).json({
@@ -1191,19 +1506,23 @@ exports.forgotPassword =
       });
 
     } catch (error) {
+
       next(error);
     }
   };
 
+
 // ============================================================
 // VERIFY OTP
 // ============================================================
+
 exports.verifyOTP =
   async (
     req,
     res,
     next
   ) => {
+
     try {
 
       const {
@@ -1212,9 +1531,11 @@ exports.verifyOTP =
       } = req.body;
 
       if (
-        typeof email !== 'string' ||
+        typeof email !==
+          'string' ||
         !email.trim()
       ) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1223,11 +1544,13 @@ exports.verifyOTP =
       }
 
       if (
-        typeof otp !== 'string' ||
+        typeof otp !==
+          'string' ||
         !/^\d{6}$/.test(
           otp.trim()
         )
       ) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1236,16 +1559,20 @@ exports.verifyOTP =
       }
 
       const cleanEmail =
-        email.trim().toLowerCase();
+        email
+          .trim()
+          .toLowerCase();
 
       const user =
         await User.findOne({
-          email: cleanEmail
+          email:
+            cleanEmail
         }).select(
           '+reset_password_otp +reset_password_otp_expires'
         );
 
       if (!user) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1257,6 +1584,7 @@ exports.verifyOTP =
         !user.reset_password_otp ||
         !user.reset_password_otp_expires
       ) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1268,6 +1596,7 @@ exports.verifyOTP =
         new Date() >
         user.reset_password_otp_expires
       ) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1282,6 +1611,7 @@ exports.verifyOTP =
         );
 
       if (!otpMatch) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1296,19 +1626,23 @@ exports.verifyOTP =
       });
 
     } catch (error) {
+
       next(error);
     }
   };
 
+
 // ============================================================
 // RESET PASSWORD
 // ============================================================
+
 exports.resetPassword =
   async (
     req,
     res,
     next
   ) => {
+
     try {
 
       const {
@@ -1318,9 +1652,11 @@ exports.resetPassword =
       } = req.body;
 
       if (
-        typeof email !== 'string' ||
+        typeof email !==
+          'string' ||
         !email.trim()
       ) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1329,11 +1665,13 @@ exports.resetPassword =
       }
 
       if (
-        typeof otp !== 'string' ||
+        typeof otp !==
+          'string' ||
         !/^\d{6}$/.test(
           otp.trim()
         )
       ) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1346,6 +1684,7 @@ exports.resetPassword =
           'string' ||
         new_password.length < 6
       ) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1354,16 +1693,20 @@ exports.resetPassword =
       }
 
       const cleanEmail =
-        email.trim().toLowerCase();
+        email
+          .trim()
+          .toLowerCase();
 
       const user =
         await User.findOne({
-          email: cleanEmail
+          email:
+            cleanEmail
         }).select(
           '+reset_password_otp +reset_password_otp_expires'
         );
 
       if (!user) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1375,6 +1718,7 @@ exports.resetPassword =
         !user.reset_password_otp ||
         !user.reset_password_otp_expires
       ) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1386,6 +1730,7 @@ exports.resetPassword =
         new Date() >
         user.reset_password_otp_expires
       ) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1393,9 +1738,6 @@ exports.resetPassword =
         });
       }
 
-      // ------------------------------------------------------
-      // Verify OTP
-      // ------------------------------------------------------
       const otpMatch =
         await bcrypt.compare(
           otp.trim(),
@@ -1403,6 +1745,7 @@ exports.resetPassword =
         );
 
       if (!otpMatch) {
+
         return res.status(400).json({
           success: false,
           message:
@@ -1410,15 +1753,9 @@ exports.resetPassword =
         });
       }
 
-      // ------------------------------------------------------
-      // Update password
-      // ------------------------------------------------------
       user.password_hash =
         new_password;
 
-      // ------------------------------------------------------
-      // Clear OTP
-      // ------------------------------------------------------
       user.reset_password_otp =
         undefined;
 
@@ -1434,6 +1771,7 @@ exports.resetPassword =
       });
 
     } catch (error) {
+
       next(error);
     }
   };
