@@ -17,21 +17,17 @@ const {
 router.use(authenticate);
 
 // ============================================================
-// SUPER ADMIN USER MANAGEMENT
+// SUPER ADMIN - USERS BY SOCIETY
 // ============================================================
 
 // GET /api/users/society/:societyId
-// Get all users of a particular society
 router.get(
   '/society/:societyId',
   authorize('super_admin'),
   userController.getUsersBySociety
 );
 
-// ============================================================
-
 // GET /api/users/society/:societyId/stats
-// Get user statistics of a particular society
 router.get(
   '/society/:societyId/stats',
   authorize('super_admin'),
@@ -42,14 +38,14 @@ router.get(
 // ALL USERS
 // ============================================================
 
-// GET /api/users
-//
 // Manager/Admin:
 //   Own society users
 //
 // Super Admin:
-//   All users
+//   All society users
 //   Optional ?society_id=...
+//
+// GET /api/users
 router.get(
   '/',
   authorize(
@@ -64,6 +60,7 @@ router.get(
 // AVAILABLE FLATS
 // ============================================================
 
+// Manager/Admin only
 // GET /api/users/flats/available
 router.get(
   '/flats/available',
@@ -78,6 +75,12 @@ router.get(
 // USER BY ID
 // ============================================================
 
+// Manager/Admin:
+//   Own society only
+//
+// Super Admin:
+//   Any society
+//
 // GET /api/users/:id
 router.get(
   '/:id',
@@ -93,13 +96,13 @@ router.get(
 // ROLE MANAGEMENT
 // ============================================================
 
-// PUT /api/users/:id/role
-//
 // Manager/Admin:
 //   Resident <-> Admin
 //
 // Super Admin:
 //   Resident <-> Admin
+//
+// Manager role is handled separately through manager setup.
 router.put(
   '/:id/role',
   authorize(
@@ -128,7 +131,11 @@ router.post(
 // DEACTIVATE USER
 // ============================================================
 
-// DELETE /api/users/:id
+// Manager/Admin:
+//   Own society
+//
+// Super Admin:
+//   Any society
 router.delete(
   '/:id',
   authorize(
@@ -143,7 +150,11 @@ router.delete(
 // ACTIVATE USER
 // ============================================================
 
-// PUT /api/users/:id/activate
+// Manager/Admin:
+//   Own society
+//
+// Super Admin:
+//   Any society
 router.put(
   '/:id/activate',
   authorize(

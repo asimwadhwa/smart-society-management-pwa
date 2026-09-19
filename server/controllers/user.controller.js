@@ -1,17 +1,29 @@
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const crypto = require('crypto');
 
-/**
- * ============================================================
- * GET ALL USERS
- * ============================================================
- * Manager/Admin:
- *   - Only their own society
- *
- * Super Admin:
- *   - Can view users from any society
- *   - Use ?society_id=...
- */
+// ============================================================
+// HELPER
+// ============================================================
+
+const isValidObjectId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
+
+// ============================================================
+// GET ALL USERS
+// ============================================================
+//
+// Manager/Admin:
+//   Only own society
+//
+// Super Admin:
+//   All societies
+//   Optional ?society_id=...
+//
+// GET /api/users
+// ============================================================
+
 exports.getAllUsers = async (req, res, next) => {
   try {
     const {
@@ -29,30 +41,68 @@ exports.getAllUsers = async (req, res, next) => {
     // ----------------------------------------------------------
 
     if (req.user.role === 'super_admin') {
+
+      // Super Admin can see all societies
+      // unless a particular society is selected.
+
       if (society_id) {
+
+        if (!isValidObjectId(society_id)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid society ID'
+          });
+        }
+
         query.society_id = society_id;
       }
+
     } else {
+
+      // Manager/Admin can only see their own society.
+
       if (!req.user.society_id) {
         return res.status(400).json({
           success: false,
-          message: 'User is not assigned to any society'
+          message:
+            'User is not assigned to any society'
         });
       }
 
-      query.society_id = req.user.society_id;
+      query.society_id =
+        req.user.society_id;
     }
 
     // ----------------------------------------------------------
-    // FILTERS
+    // ROLE FILTER
     // ----------------------------------------------------------
 
     if (role) {
+
+      const validRoles = [
+        'manager',
+        'admin',
+        'resident',
+        'watchman'
+      ];
+
+      if (!validRoles.includes(role)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid role'
+        });
+      }
+
       query.role = role;
     }
 
+    // ----------------------------------------------------------
+    // ACTIVE FILTER
+    // ----------------------------------------------------------
+
     if (is_active !== undefined) {
-      query.is_active = is_active === 'true';
+      query.is_active =
+        is_active === 'true';
     }
 
     // ----------------------------------------------------------
@@ -65,18 +115,35 @@ exports.getAllUsers = async (req, res, next) => {
     );
 
     const limitNumber = Math.min(
-      Math.max(parseInt(limit) || 50, 1),
+      Math.max(
+        parseInt(limit) || 50,
+        1
+      ),
       100
     );
 
     const skip =
-      (pageNumber - 1) * limitNumber;
+      (pageNumber - 1) *
+      limitNumber;
 
-    const users = await User.find(query)
-      .select('-password_hash -otp -otp_expires')
-      .sort({ created_at: -1 })
-      .skip(skip)
-      .limit(limitNumber);
+    // ----------------------------------------------------------
+    // FETCH USERS
+    // ----------------------------------------------------------
+
+    const users =
+      await User.find(query)
+        .select(
+          '-password_hash -otp -otp_expires'
+        )
+        .populate(
+          'society_id',
+          'name society_code city state is_active'
+        )
+        .sort({
+          created_at: -1
+        })
+        .skip(skip)
+        .limit(limitNumber);
 
     const total =
       await User.countDocuments(query);
@@ -86,9 +153,10 @@ exports.getAllUsers = async (req, res, next) => {
       data: users,
       pagination: {
         current: pageNumber,
-        pages: Math.ceil(
-          total / limitNumber
-        ),
+        pages:
+          Math.ceil(
+            total / limitNumber
+          ),
         total,
         limit: limitNumber
       }
@@ -99,15 +167,20 @@ exports.getAllUsers = async (req, res, next) => {
   }
 };
 
+// ============================================================
+// GET AVAILABLE FLATS
+// ============================================================
+//
+// Manager/Admin only
+// ============================================================
 
-/**
- * ============================================================
- * GET AVAILABLE FLATS
- * ============================================================
- * Manager/Admin only
- */
-exports.getAvailableFlats = async (req, res, next) => {
+exports.getAvailableFlats = async (
+  req,
+  res,
+  next
+) => {
   try {
+
     const societyId =
       req.user.society_id;
 
@@ -121,11 +194,21 @@ exports.getAvailableFlats = async (req, res, next) => {
 
     const allFlats = [];
 
-    for (let floor = 1; floor <= 4; floor++) {
-      for (let unit = 1; unit <= 10; unit++) {
+    for (
+      let floor = 1;
+      floor <= 4;
+      floor++
+    ) {
+      for (
+        let unit = 1;
+        unit <= 10;
+        unit++
+      ) {
+
         allFlats.push(
           `${floor}0${unit}`.slice(-3)
         );
+
       }
     }
 
@@ -160,29 +243,47 @@ exports.getAvailableFlats = async (req, res, next) => {
   }
 };
 
+// ============================================================
+// GET USER BY ID
+// ============================================================
+//
+// Manager/Admin:
+//   Own society only
+//
+// Super Admin:
+//   Any society
+// ============================================================
 
-/**
- * ============================================================
- * GET USER BY ID
- * ============================================================
- * Manager/Admin:
- *   - Own society only
- *
- * Super Admin:
- *   - Any user
- */
-exports.getUserById = async (req, res, next) => {
+exports.getUserById = async (
+  req,
+  res,
+  next
+) => {
   try {
+
+    const userId =
+      req.params.id;
+
+    if (!isValidObjectId(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
+
     const query = {
-      _id: req.params.id
+      _id: userId
     };
 
-    if (req.user.role !== 'super_admin') {
+    // ----------------------------------------------------------
+    // SOCIETY SECURITY
+    // ----------------------------------------------------------
 
-      const societyId =
-        req.user.society_id;
+    if (
+      req.user.role !== 'super_admin'
+    ) {
 
-      if (!societyId) {
+      if (!req.user.society_id) {
         return res.status(400).json({
           success: false,
           message:
@@ -190,13 +291,18 @@ exports.getUserById = async (req, res, next) => {
         });
       }
 
-      query.society_id = societyId;
+      query.society_id =
+        req.user.society_id;
     }
 
     const user =
       await User.findOne(query)
         .select(
           '-password_hash -otp -otp_expires'
+        )
+        .populate(
+          'society_id',
+          'name society_code city state is_active'
         );
 
     if (!user) {
@@ -216,22 +322,26 @@ exports.getUserById = async (req, res, next) => {
   }
 };
 
+// ============================================================
+// UPDATE USER ROLE
+// ============================================================
+//
+// Manager/Admin:
+//   Resident <-> Admin
+//
+// Super Admin:
+//   Resident <-> Admin
+//
+// Manager and Super Admin roles cannot be changed here.
+// ============================================================
 
-/**
- * ============================================================
- * UPDATE USER ROLE
- * ============================================================
- *
- * Manager/Admin:
- *   - Resident <-> Admin
- *
- * Super Admin:
- *   - Can change Admin/Resident
- *   - Cannot change Super Admin
- *   - Cannot change Manager through this API
- */
-exports.updateUserRole = async (req, res, next) => {
+exports.updateUserRole = async (
+  req,
+  res,
+  next
+) => {
   try {
+
     const {
       role
     } = req.body;
@@ -255,6 +365,17 @@ exports.updateUserRole = async (req, res, next) => {
       });
     }
 
+    if (!isValidObjectId(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
+
+    // ----------------------------------------------------------
+    // CANNOT CHANGE OWN ROLE
+    // ----------------------------------------------------------
+
     if (
       userId ===
       req.user._id.toString()
@@ -277,6 +398,7 @@ exports.updateUserRole = async (req, res, next) => {
     if (
       req.user.role !== 'super_admin'
     ) {
+
       if (!req.user.society_id) {
         return res.status(400).json({
           success: false,
@@ -299,6 +421,10 @@ exports.updateUserRole = async (req, res, next) => {
       });
     }
 
+    // ----------------------------------------------------------
+    // PROTECTED ROLES
+    // ----------------------------------------------------------
+
     if (
       user.role === 'manager'
     ) {
@@ -319,6 +445,10 @@ exports.updateUserRole = async (req, res, next) => {
       });
     }
 
+    // ----------------------------------------------------------
+    // UPDATE ROLE
+    // ----------------------------------------------------------
+
     user.role = role;
 
     await user.save();
@@ -335,15 +465,17 @@ exports.updateUserRole = async (req, res, next) => {
   }
 };
 
+// ============================================================
+// CREATE WATCHMAN
+// ============================================================
 
-/**
- * ============================================================
- * CREATE WATCHMAN
- * ============================================================
- * Existing functionality preserved.
- */
-exports.createWatchman = async (req, res, next) => {
+exports.createWatchman = async (
+  req,
+  res,
+  next
+) => {
   try {
+
     const {
       name,
       email,
@@ -373,9 +505,12 @@ exports.createWatchman = async (req, res, next) => {
       });
     }
 
+    const normalizedEmail =
+      email.toLowerCase().trim();
+
     const existingUser =
       await User.findOne({
-        email: email.toLowerCase()
+        email: normalizedEmail
       });
 
     if (existingUser) {
@@ -394,8 +529,7 @@ exports.createWatchman = async (req, res, next) => {
     const watchman =
       await User.create({
         name: name.trim(),
-        email:
-          email.toLowerCase().trim(),
+        email: normalizedEmail,
         phone: phone.trim(),
         society_id: societyId,
         role: 'watchman',
@@ -419,25 +553,38 @@ exports.createWatchman = async (req, res, next) => {
   }
 };
 
+// ============================================================
+// DEACTIVATE USER
+// ============================================================
+//
+// Manager/Admin:
+//   Own society
+//
+// Super Admin:
+//   Any society
+//
+// Protected:
+//   Own account
+//   Super Admin
+//   Manager
+// ============================================================
 
-/**
- * ============================================================
- * DEACTIVATE USER
- * ============================================================
- *
- * Manager/Admin:
- *   - Own society
- *
- * Super Admin:
- *   - Any society user
- *   - Cannot deactivate himself
- *   - Cannot deactivate another Super Admin
- *   - Cannot deactivate Manager
- */
-exports.deleteUser = async (req, res, next) => {
+exports.deleteUser = async (
+  req,
+  res,
+  next
+) => {
   try {
+
     const userId =
       req.params.id;
+
+    if (!isValidObjectId(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
 
     if (
       userId ===
@@ -461,10 +608,8 @@ exports.deleteUser = async (req, res, next) => {
     if (
       req.user.role !== 'super_admin'
     ) {
-      const societyId =
-        req.user.society_id;
 
-      if (!societyId) {
+      if (!req.user.society_id) {
         return res.status(400).json({
           success: false,
           message:
@@ -473,7 +618,7 @@ exports.deleteUser = async (req, res, next) => {
       }
 
       query.society_id =
-        societyId;
+        req.user.society_id;
     }
 
     const user =
@@ -482,8 +627,7 @@ exports.deleteUser = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message:
-          'User not found'
+        message: 'User not found'
       });
     }
 
@@ -523,30 +667,46 @@ exports.deleteUser = async (req, res, next) => {
   }
 };
 
+// ============================================================
+// ACTIVATE USER
+// ============================================================
+//
+// Manager/Admin:
+//   Own society
+//
+// Super Admin:
+//   Any society
+// ============================================================
 
-/**
- * ============================================================
- * ACTIVATE USER
- * ============================================================
- *
- * Super Admin:
- *   - Any society user
- *
- * Manager/Admin:
- *   - Own society users
- */
-exports.activateUser = async (req, res, next) => {
+exports.activateUser = async (
+  req,
+  res,
+  next
+) => {
   try {
+
     const userId =
       req.params.id;
+
+    if (!isValidObjectId(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
 
     const query = {
       _id: userId
     };
 
+    // ----------------------------------------------------------
+    // SOCIETY SECURITY
+    // ----------------------------------------------------------
+
     if (
       req.user.role !== 'super_admin'
     ) {
+
       if (!req.user.society_id) {
         return res.status(400).json({
           success: false,
@@ -565,8 +725,7 @@ exports.activateUser = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message:
-          'User not found'
+        message: 'User not found'
       });
     }
 
@@ -596,24 +755,32 @@ exports.activateUser = async (req, res, next) => {
   }
 };
 
+// ============================================================
+// GET USERS BY SOCIETY
+// ============================================================
+//
+// Super Admin only
+//
+// GET /api/users/society/:societyId
+// ============================================================
 
-/**
- * ============================================================
- * GET USERS BY SOCIETY
- * ============================================================
- * Super Admin only
- *
- * GET /api/users/society/:societyId
- */
 exports.getUsersBySociety = async (
   req,
   res,
   next
 ) => {
   try {
+
     const {
       societyId
     } = req.params;
+
+    if (!isValidObjectId(societyId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid society ID'
+      });
+    }
 
     const users =
       await User.find({
@@ -621,6 +788,10 @@ exports.getUsersBySociety = async (
       })
         .select(
           '-password_hash -otp -otp_expires'
+        )
+        .populate(
+          'society_id',
+          'name society_code city state is_active'
         )
         .sort({
           role: 1,
@@ -637,41 +808,53 @@ exports.getUsersBySociety = async (
   }
 };
 
+// ============================================================
+// GET SOCIETY USER STATS
+// ============================================================
+//
+// Super Admin only
+//
+// GET /api/users/society/:societyId/stats
+// ============================================================
 
-/**
- * ============================================================
- * GET SOCIETY USER STATS
- * ============================================================
- * Super Admin only
- *
- * GET /api/users/society/:societyId/stats
- */
 exports.getSocietyUserStats = async (
   req,
   res,
   next
 ) => {
   try {
+
     const {
       societyId
     } = req.params;
+
+    if (!isValidObjectId(societyId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid society ID'
+      });
+    }
+
+    const objectId =
+      new mongoose.Types.ObjectId(
+        societyId
+      );
 
     const stats =
       await User.aggregate([
         {
           $match: {
-            society_id:
-              require('mongoose').Types.ObjectId.createFromHexString(
-                societyId
-              )
+            society_id: objectId
           }
         },
         {
           $group: {
             _id: '$role',
+
             count: {
               $sum: 1
             },
+
             active: {
               $sum: {
                 $cond: [
@@ -696,8 +879,16 @@ exports.getSocietyUserStats = async (
     };
 
     stats.forEach(item => {
-      result[item._id] =
-        item.count;
+
+      if (
+        Object.prototype.hasOwnProperty
+          .call(result, item._id)
+      ) {
+
+        result[item._id] =
+          item.count;
+
+      }
 
       result.total +=
         item.count;
