@@ -2,6 +2,7 @@ const User = require('../models/User');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 
+
 // ============================================================
 // HELPER
 // ============================================================
@@ -10,22 +11,29 @@ const isValidObjectId = (id) => {
   return mongoose.Types.ObjectId.isValid(id);
 };
 
+
 // ============================================================
 // GET ALL USERS
 // ============================================================
 //
-// Manager/Admin:
-//   Only own society
-//
 // Super Admin:
 //   All societies
-//   Optional ?society_id=...
+//   BUT super_admin itself is NEVER included
+//
+// Manager/Admin:
+//   Only own society
 //
 // GET /api/users
 // ============================================================
 
-exports.getAllUsers = async (req, res, next) => {
+exports.getAllUsers = async (
+  req,
+  res,
+  next
+) => {
+
   try {
+
     const {
       role,
       is_active,
@@ -34,44 +42,80 @@ exports.getAllUsers = async (req, res, next) => {
       limit = 50
     } = req.query;
 
-    const query = {};
+
+    // ----------------------------------------------------------
+    // IMPORTANT
+    // SUPER ADMIN MUST NEVER APPEAR IN MANAGE USERS
+    // ----------------------------------------------------------
+
+    const query = {
+      role: {
+        $ne: 'super_admin'
+      }
+    };
+
 
     // ----------------------------------------------------------
     // SOCIETY SCOPE
     // ----------------------------------------------------------
 
-    if (req.user.role === 'super_admin') {
+    if (
+      req.user.role === 'super_admin'
+    ) {
 
-      // Super Admin can see all societies
-      // unless a particular society is selected.
+      /*
+       * Super Admin can see users
+       * from all societies.
+       *
+       * If society_id is supplied,
+       * show only that society.
+       */
 
       if (society_id) {
 
-        if (!isValidObjectId(society_id)) {
+        if (
+          !isValidObjectId(
+            society_id
+          )
+        ) {
+
           return res.status(400).json({
             success: false,
-            message: 'Invalid society ID'
+            message:
+              'Invalid society ID'
           });
+
         }
 
-        query.society_id = society_id;
+        query.society_id =
+          society_id;
+
       }
 
     } else {
 
-      // Manager/Admin can only see their own society.
+      /*
+       * Manager/Admin:
+       * Only their own society.
+       */
 
-      if (!req.user.society_id) {
+      if (
+        !req.user.society_id
+      ) {
+
         return res.status(400).json({
           success: false,
           message:
             'User is not assigned to any society'
         });
+
       }
 
       query.society_id =
         req.user.society_id;
+
     }
+
 
     // ----------------------------------------------------------
     // ROLE FILTER
@@ -86,45 +130,80 @@ exports.getAllUsers = async (req, res, next) => {
         'watchman'
       ];
 
-      if (!validRoles.includes(role)) {
+
+      if (
+        !validRoles.includes(role)
+      ) {
+
         return res.status(400).json({
           success: false,
-          message: 'Invalid role'
+          message:
+            'Invalid role'
         });
+
       }
 
+
+      /*
+       * This replaces the $ne condition,
+       * but all allowed roles already exclude
+       * super_admin.
+       */
       query.role = role;
+
     }
+
 
     // ----------------------------------------------------------
     // ACTIVE FILTER
     // ----------------------------------------------------------
 
-    if (is_active !== undefined) {
-      query.is_active =
-        is_active === 'true';
+    if (
+      is_active !== undefined
+    ) {
+
+      if (
+        is_active === 'true'
+      ) {
+
+        query.is_active = true;
+
+      } else if (
+        is_active === 'false'
+      ) {
+
+        query.is_active = false;
+
+      }
+
     }
+
 
     // ----------------------------------------------------------
     // PAGINATION
     // ----------------------------------------------------------
 
-    const pageNumber = Math.max(
-      parseInt(page) || 1,
-      1
-    );
-
-    const limitNumber = Math.min(
+    const pageNumber =
       Math.max(
-        parseInt(limit) || 50,
+        parseInt(page) || 1,
         1
-      ),
-      100
-    );
+      );
+
+
+    const limitNumber =
+      Math.min(
+        Math.max(
+          parseInt(limit) || 50,
+          1
+        ),
+        100
+      );
+
 
     const skip =
       (pageNumber - 1) *
       limitNumber;
+
 
     // ----------------------------------------------------------
     // FETCH USERS
@@ -145,27 +224,61 @@ exports.getAllUsers = async (req, res, next) => {
         .skip(skip)
         .limit(limitNumber);
 
+
+    // ----------------------------------------------------------
+    // COUNT
+    // ----------------------------------------------------------
+
+    /*
+     * Because query contains:
+     *
+     * role: { $ne: 'super_admin' }
+     *
+     * Super Admin is NOT counted here.
+     */
+
     const total =
-      await User.countDocuments(query);
+      await User.countDocuments(
+        query
+      );
+
 
     return res.status(200).json({
+
       success: true,
+
       data: users,
+
       pagination: {
-        current: pageNumber,
+
+        current:
+          pageNumber,
+
         pages:
           Math.ceil(
-            total / limitNumber
+            total /
+            limitNumber
           ),
-        total,
-        limit: limitNumber
+
+        total:
+
+          total,
+
+        limit:
+          limitNumber
+
       }
+
     });
 
   } catch (error) {
+
     next(error);
+
   }
+
 };
+
 
 // ============================================================
 // GET AVAILABLE FLATS
@@ -174,74 +287,105 @@ exports.getAllUsers = async (req, res, next) => {
 // Manager/Admin only
 // ============================================================
 
-exports.getAvailableFlats = async (
-  req,
-  res,
-  next
-) => {
-  try {
+exports.getAvailableFlats =
+  async (
+    req,
+    res,
+    next
+  ) => {
 
-    const societyId =
-      req.user.society_id;
+    try {
 
-    if (!societyId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'User is not assigned to any society'
-      });
-    }
+      const societyId =
+        req.user.society_id;
 
-    const allFlats = [];
 
-    for (
-      let floor = 1;
-      floor <= 4;
-      floor++
-    ) {
-      for (
-        let unit = 1;
-        unit <= 10;
-        unit++
-      ) {
+      if (!societyId) {
 
-        allFlats.push(
-          `${floor}0${unit}`.slice(-3)
-        );
+        return res.status(400).json({
+          success: false,
+          message:
+            'User is not assigned to any society'
+        });
 
       }
+
+
+      const allFlats = [];
+
+
+      for (
+        let floor = 1;
+        floor <= 4;
+        floor++
+      ) {
+
+        for (
+          let unit = 1;
+          unit <= 10;
+          unit++
+        ) {
+
+          allFlats.push(
+            `${floor}0${unit}`.slice(-3)
+          );
+
+        }
+
+      }
+
+
+      const registeredUsers =
+        await User.find({
+
+          society_id:
+            societyId,
+
+          flat_no: {
+            $exists: true,
+            $ne: null
+          },
+
+          is_active: true
+
+        }).select(
+          'flat_no'
+        );
+
+
+      const registeredFlats =
+        registeredUsers.map(
+          user =>
+            user.flat_no
+        );
+
+
+      const availableFlats =
+        allFlats.filter(
+          flat =>
+            !registeredFlats.includes(
+              flat
+            )
+        );
+
+
+      return res.status(200).json({
+
+        success: true,
+
+        data:
+          availableFlats
+
+      });
+
+    } catch (error) {
+
+      next(error);
+
     }
 
-    const registeredUsers =
-      await User.find({
-        society_id: societyId,
-        flat_no: {
-          $exists: true,
-          $ne: null
-        },
-        is_active: true
-      }).select('flat_no');
+  };
 
-    const registeredFlats =
-      registeredUsers.map(
-        user => user.flat_no
-      );
-
-    const availableFlats =
-      allFlats.filter(
-        flat =>
-          !registeredFlats.includes(flat)
-      );
-
-    return res.status(200).json({
-      success: true,
-      data: availableFlats
-    });
-
-  } catch (error) {
-    next(error);
-  }
-};
 
 // ============================================================
 // GET USER BY ID
@@ -252,75 +396,109 @@ exports.getAvailableFlats = async (
 //
 // Super Admin:
 //   Any society
+//
+// IMPORTANT:
+//   Super Admin itself is still protected.
 // ============================================================
 
-exports.getUserById = async (
-  req,
-  res,
-  next
-) => {
-  try {
+exports.getUserById =
+  async (
+    req,
+    res,
+    next
+  ) => {
 
-    const userId =
-      req.params.id;
+    try {
 
-    if (!isValidObjectId(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid user ID'
-      });
-    }
+      const userId =
+        req.params.id;
 
-    const query = {
-      _id: userId
-    };
 
-    // ----------------------------------------------------------
-    // SOCIETY SECURITY
-    // ----------------------------------------------------------
+      if (
+        !isValidObjectId(
+          userId
+        )
+      ) {
 
-    if (
-      req.user.role !== 'super_admin'
-    ) {
-
-      if (!req.user.society_id) {
         return res.status(400).json({
           success: false,
           message:
-            'User is not assigned to any society'
+            'Invalid user ID'
         });
+
       }
 
-      query.society_id =
-        req.user.society_id;
-    }
 
-    const user =
-      await User.findOne(query)
-        .select(
-          '-password_hash -otp -otp_expires'
+      const query = {
+        _id: userId
+      };
+
+
+      if (
+        req.user.role !==
+        'super_admin'
+      ) {
+
+        if (
+          !req.user.society_id
+        ) {
+
+          return res.status(400).json({
+            success: false,
+            message:
+              'User is not assigned to any society'
+          });
+
+        }
+
+
+        query.society_id =
+          req.user.society_id;
+
+      }
+
+
+      const user =
+        await User.findOne(
+          query
         )
-        .populate(
-          'society_id',
-          'name society_code city state is_active'
-        );
+          .select(
+            '-password_hash -otp -otp_expires'
+          )
+          .populate(
+            'society_id',
+            'name society_code city state is_active'
+          );
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
+
+      if (!user) {
+
+        return res.status(404).json({
+          success: false,
+          message:
+            'User not found'
+        });
+
+      }
+
+
+      return res.status(200).json({
+
+        success: true,
+
+        data:
+          user
+
       });
+
+    } catch (error) {
+
+      next(error);
+
     }
 
-    return res.status(200).json({
-      success: true,
-      data: user
-    });
+  };
 
-  } catch (error) {
-    next(error);
-  }
-};
 
 // ============================================================
 // UPDATE USER ROLE
@@ -332,226 +510,332 @@ exports.getUserById = async (
 // Super Admin:
 //   Resident <-> Admin
 //
-// Manager and Super Admin roles cannot be changed here.
+// Protected:
+//   Manager
+//   Super Admin
+//   Own account
 // ============================================================
 
-exports.updateUserRole = async (
-  req,
-  res,
-  next
-) => {
-  try {
+exports.updateUserRole =
+  async (
+    req,
+    res,
+    next
+  ) => {
 
-    const {
-      role
-    } = req.body;
+    try {
 
-    const userId =
-      req.params.id;
+      const {
+        role
+      } = req.body;
 
-    const validRoles = [
-      'admin',
-      'resident'
-    ];
 
-    if (
-      !role ||
-      !validRoles.includes(role)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Invalid role. Must be admin or resident'
-      });
-    }
+      const userId =
+        req.params.id;
 
-    if (!isValidObjectId(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid user ID'
-      });
-    }
 
-    // ----------------------------------------------------------
-    // CANNOT CHANGE OWN ROLE
-    // ----------------------------------------------------------
+      const validRoles = [
+        'admin',
+        'resident'
+      ];
 
-    if (
-      userId ===
-      req.user._id.toString()
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Cannot change your own role'
-      });
-    }
 
-    const query = {
-      _id: userId
-    };
+      if (
+        !role ||
+        !validRoles.includes(
+          role
+        )
+      ) {
 
-    // ----------------------------------------------------------
-    // SOCIETY SECURITY
-    // ----------------------------------------------------------
-
-    if (
-      req.user.role !== 'super_admin'
-    ) {
-
-      if (!req.user.society_id) {
         return res.status(400).json({
           success: false,
           message:
-            'User is not assigned to any society'
+            'Invalid role. Must be admin or resident'
         });
+
       }
 
-      query.society_id =
-        req.user.society_id;
-    }
 
-    const user =
-      await User.findOne(query);
+      if (
+        !isValidObjectId(
+          userId
+        )
+      ) {
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid user ID'
+        });
 
-    // ----------------------------------------------------------
-    // PROTECTED ROLES
-    // ----------------------------------------------------------
+      }
 
-    if (
-      user.role === 'manager'
-    ) {
-      return res.status(400).json({
-        success: false,
+
+      // --------------------------------------------------------
+      // CANNOT CHANGE OWN ROLE
+      // --------------------------------------------------------
+
+      if (
+        userId ===
+        req.user._id.toString()
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          message:
+            'Cannot change your own role'
+        });
+
+      }
+
+
+      const query = {
+        _id: userId
+      };
+
+
+      // --------------------------------------------------------
+      // SOCIETY SECURITY
+      // --------------------------------------------------------
+
+      if (
+        req.user.role !==
+        'super_admin'
+      ) {
+
+        if (
+          !req.user.society_id
+        ) {
+
+          return res.status(400).json({
+            success: false,
+            message:
+              'User is not assigned to any society'
+          });
+
+        }
+
+
+        query.society_id =
+          req.user.society_id;
+
+      }
+
+
+      const user =
+        await User.findOne(
+          query
+        );
+
+
+      if (!user) {
+
+        return res.status(404).json({
+          success: false,
+          message:
+            'User not found'
+        });
+
+      }
+
+
+      // --------------------------------------------------------
+      // PROTECTED ROLES
+      // --------------------------------------------------------
+
+      if (
+        user.role ===
+        'manager'
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          message:
+            'Cannot change manager role'
+        });
+
+      }
+
+
+      if (
+        user.role ===
+        'super_admin'
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          message:
+            'Cannot change super admin role'
+        });
+
+      }
+
+
+      // --------------------------------------------------------
+      // UPDATE
+      // --------------------------------------------------------
+
+      user.role =
+        role;
+
+
+      await user.save();
+
+
+      return res.status(200).json({
+
+        success: true,
+
         message:
-          'Cannot change manager role'
+          `User role updated to ${role}`,
+
+        data:
+          user.toJSON()
+
       });
+
+    } catch (error) {
+
+      next(error);
+
     }
 
-    if (
-      user.role === 'super_admin'
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Cannot change super admin role'
-      });
-    }
+  };
 
-    // ----------------------------------------------------------
-    // UPDATE ROLE
-    // ----------------------------------------------------------
-
-    user.role = role;
-
-    await user.save();
-
-    return res.status(200).json({
-      success: true,
-      message:
-        `User role updated to ${role}`,
-      data: user.toJSON()
-    });
-
-  } catch (error) {
-    next(error);
-  }
-};
 
 // ============================================================
 // CREATE WATCHMAN
 // ============================================================
 
-exports.createWatchman = async (
-  req,
-  res,
-  next
-) => {
-  try {
+exports.createWatchman =
+  async (
+    req,
+    res,
+    next
+  ) => {
 
-    const {
-      name,
-      email,
-      phone
-    } = req.body;
+    try {
 
-    const societyId =
-      req.user.society_id;
+      const {
+        name,
+        email,
+        phone
+      } = req.body;
 
-    if (!societyId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'User is not assigned to any society'
-      });
-    }
 
-    if (
-      !name ||
-      !email ||
-      !phone
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Please provide name, email and phone'
-      });
-    }
+      const societyId =
+        req.user.society_id;
 
-    const normalizedEmail =
-      email.toLowerCase().trim();
 
-    const existingUser =
-      await User.findOne({
-        email: normalizedEmail
-      });
+      if (!societyId) {
 
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Email already registered'
-      });
-    }
+        return res.status(400).json({
+          success: false,
+          message:
+            'User is not assigned to any society'
+        });
 
-    const tempPassword =
-      crypto
-        .randomBytes(4)
-        .toString('hex');
-
-    const watchman =
-      await User.create({
-        name: name.trim(),
-        email: normalizedEmail,
-        phone: phone.trim(),
-        society_id: societyId,
-        role: 'watchman',
-        password_hash:
-          tempPassword,
-        is_verified: true
-      });
-
-    return res.status(201).json({
-      success: true,
-      message:
-        'Watchman account created successfully',
-      data: {
-        user: watchman.toJSON(),
-        tempPassword
       }
-    });
 
-  } catch (error) {
-    next(error);
-  }
-};
+
+      if (
+        !name ||
+        !email ||
+        !phone
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          message:
+            'Please provide name, email and phone'
+        });
+
+      }
+
+
+      const normalizedEmail =
+        email
+          .toLowerCase()
+          .trim();
+
+
+      const existingUser =
+        await User.findOne({
+          email:
+            normalizedEmail
+        });
+
+
+      if (existingUser) {
+
+        return res.status(400).json({
+          success: false,
+          message:
+            'Email already registered'
+        });
+
+      }
+
+
+      const tempPassword =
+        crypto
+          .randomBytes(4)
+          .toString('hex');
+
+
+      const watchman =
+        await User.create({
+
+          name:
+            name.trim(),
+
+          email:
+            normalizedEmail,
+
+          phone:
+            phone.trim(),
+
+          society_id:
+            societyId,
+
+          role:
+            'watchman',
+
+          password_hash:
+            tempPassword,
+
+          is_verified:
+            true
+
+        });
+
+
+      return res.status(201).json({
+
+        success: true,
+
+        message:
+          'Watchman account created successfully',
+
+        data: {
+
+          user:
+            watchman.toJSON(),
+
+          tempPassword
+
+        }
+
+      });
+
+    } catch (error) {
+
+      next(error);
+
+    }
+
+  };
+
 
 // ============================================================
 // DEACTIVATE USER
@@ -565,195 +849,277 @@ exports.createWatchman = async (
 //
 // Protected:
 //   Own account
-//   Super Admin
 //   Manager
+//   Super Admin
 // ============================================================
 
-exports.deleteUser = async (
-  req,
-  res,
-  next
-) => {
-  try {
+exports.deleteUser =
+  async (
+    req,
+    res,
+    next
+  ) => {
 
-    const userId =
-      req.params.id;
+    try {
 
-    if (!isValidObjectId(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid user ID'
-      });
-    }
+      const userId =
+        req.params.id;
 
-    if (
-      userId ===
-      req.user._id.toString()
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Cannot deactivate your own account'
-      });
-    }
 
-    const query = {
-      _id: userId
-    };
+      if (
+        !isValidObjectId(
+          userId
+        )
+      ) {
 
-    // ----------------------------------------------------------
-    // SOCIETY SECURITY
-    // ----------------------------------------------------------
-
-    if (
-      req.user.role !== 'super_admin'
-    ) {
-
-      if (!req.user.society_id) {
         return res.status(400).json({
           success: false,
           message:
-            'User is not assigned to any society'
+            'Invalid user ID'
         });
+
       }
 
-      query.society_id =
-        req.user.society_id;
-    }
 
-    const user =
-      await User.findOne(query);
+      if (
+        userId ===
+        req.user._id.toString()
+      ) {
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
+        return res.status(400).json({
+          success: false,
+          message:
+            'Cannot deactivate your own account'
+        });
 
-    if (
-      user.role === 'manager'
-    ) {
-      return res.status(400).json({
-        success: false,
+      }
+
+
+      const query = {
+        _id: userId
+      };
+
+
+      // --------------------------------------------------------
+      // SOCIETY SECURITY
+      // --------------------------------------------------------
+
+      if (
+        req.user.role !==
+        'super_admin'
+      ) {
+
+        if (
+          !req.user.society_id
+        ) {
+
+          return res.status(400).json({
+            success: false,
+            message:
+              'User is not assigned to any society'
+          });
+
+        }
+
+
+        query.society_id =
+          req.user.society_id;
+
+      }
+
+
+      const user =
+        await User.findOne(
+          query
+        );
+
+
+      if (!user) {
+
+        return res.status(404).json({
+          success: false,
+          message:
+            'User not found'
+        });
+
+      }
+
+
+      if (
+        user.role ===
+        'manager'
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          message:
+            'Cannot deactivate manager account'
+        });
+
+      }
+
+
+      if (
+        user.role ===
+        'super_admin'
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          message:
+            'Cannot deactivate super admin account'
+        });
+
+      }
+
+
+      user.is_active =
+        false;
+
+
+      await user.save();
+
+
+      return res.status(200).json({
+
+        success: true,
+
         message:
-          'Cannot deactivate manager account'
+          'User account deactivated',
+
+        data:
+          user.toJSON()
+
       });
+
+    } catch (error) {
+
+      next(error);
+
     }
 
-    if (
-      user.role === 'super_admin'
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Cannot deactivate super admin account'
-      });
-    }
+  };
 
-    user.is_active = false;
-
-    await user.save();
-
-    return res.status(200).json({
-      success: true,
-      message:
-        'User account deactivated',
-      data: user.toJSON()
-    });
-
-  } catch (error) {
-    next(error);
-  }
-};
 
 // ============================================================
 // ACTIVATE USER
 // ============================================================
-//
-// Manager/Admin:
-//   Own society
-//
-// Super Admin:
-//   Any society
-// ============================================================
 
-exports.activateUser = async (
-  req,
-  res,
-  next
-) => {
-  try {
+exports.activateUser =
+  async (
+    req,
+    res,
+    next
+  ) => {
 
-    const userId =
-      req.params.id;
+    try {
 
-    if (!isValidObjectId(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid user ID'
-      });
-    }
+      const userId =
+        req.params.id;
 
-    const query = {
-      _id: userId
-    };
 
-    // ----------------------------------------------------------
-    // SOCIETY SECURITY
-    // ----------------------------------------------------------
+      if (
+        !isValidObjectId(
+          userId
+        )
+      ) {
 
-    if (
-      req.user.role !== 'super_admin'
-    ) {
-
-      if (!req.user.society_id) {
         return res.status(400).json({
           success: false,
           message:
-            'User is not assigned to any society'
+            'Invalid user ID'
         });
+
       }
 
-      query.society_id =
-        req.user.society_id;
-    }
 
-    const user =
-      await User.findOne(query);
+      const query = {
+        _id: userId
+      };
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
 
-    if (
-      user.role === 'super_admin'
-    ) {
-      return res.status(400).json({
-        success: false,
+      if (
+        req.user.role !==
+        'super_admin'
+      ) {
+
+        if (
+          !req.user.society_id
+        ) {
+
+          return res.status(400).json({
+            success: false,
+            message:
+              'User is not assigned to any society'
+          });
+
+        }
+
+
+        query.society_id =
+          req.user.society_id;
+
+      }
+
+
+      const user =
+        await User.findOne(
+          query
+        );
+
+
+      if (!user) {
+
+        return res.status(404).json({
+          success: false,
+          message:
+            'User not found'
+        });
+
+      }
+
+
+      if (
+        user.role ===
+        'super_admin'
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          message:
+            'Cannot modify super admin account'
+        });
+
+      }
+
+
+      user.is_active =
+        true;
+
+
+      await user.save();
+
+
+      return res.status(200).json({
+
+        success: true,
+
         message:
-          'Cannot modify super admin account'
+          'User account activated',
+
+        data:
+          user.toJSON()
+
       });
+
+    } catch (error) {
+
+      next(error);
+
     }
 
-    user.is_active = true;
+  };
 
-    await user.save();
-
-    return res.status(200).json({
-      success: true,
-      message:
-        'User account activated',
-      data: user.toJSON()
-    });
-
-  } catch (error) {
-    next(error);
-  }
-};
 
 // ============================================================
 // GET USERS BY SOCIETY
@@ -764,49 +1130,82 @@ exports.activateUser = async (
 // GET /api/users/society/:societyId
 // ============================================================
 
-exports.getUsersBySociety = async (
-  req,
-  res,
-  next
-) => {
-  try {
+exports.getUsersBySociety =
+  async (
+    req,
+    res,
+    next
+  ) => {
 
-    const {
-      societyId
-    } = req.params;
+    try {
 
-    if (!isValidObjectId(societyId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid society ID'
-      });
-    }
+      const {
+        societyId
+      } = req.params;
 
-    const users =
-      await User.find({
-        society_id: societyId
-      })
-        .select(
-          '-password_hash -otp -otp_expires'
+
+      if (
+        !isValidObjectId(
+          societyId
         )
-        .populate(
-          'society_id',
-          'name society_code city state is_active'
-        )
-        .sort({
-          role: 1,
-          created_at: -1
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid society ID'
         });
 
-    return res.status(200).json({
-      success: true,
-      data: users
-    });
+      }
 
-  } catch (error) {
-    next(error);
-  }
-};
+
+      const users =
+        await User.find({
+
+          society_id:
+            societyId,
+
+          /*
+           * Super Admin has society_id = null,
+           * so it would not normally appear here.
+           * Still explicitly exclude it.
+           */
+
+          role: {
+            $ne: 'super_admin'
+          }
+
+        })
+          .select(
+            '-password_hash -otp -otp_expires'
+          )
+          .populate(
+            'society_id',
+            'name society_code city state is_active'
+          )
+          .sort({
+            role: 1,
+            created_at: -1
+          });
+
+
+      return res.status(200).json({
+
+        success: true,
+
+        data:
+          users
+
+      });
+
+    } catch (error) {
+
+      next(error);
+
+    }
+
+  };
+
 
 // ============================================================
 // GET SOCIETY USER STATS
@@ -817,96 +1216,164 @@ exports.getUsersBySociety = async (
 // GET /api/users/society/:societyId/stats
 // ============================================================
 
-exports.getSocietyUserStats = async (
-  req,
-  res,
-  next
-) => {
-  try {
+exports.getSocietyUserStats =
+  async (
+    req,
+    res,
+    next
+  ) => {
 
-    const {
-      societyId
-    } = req.params;
+    try {
 
-    if (!isValidObjectId(societyId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid society ID'
-      });
-    }
-
-    const objectId =
-      new mongoose.Types.ObjectId(
+      const {
         societyId
-      );
+      } = req.params;
 
-    const stats =
-      await User.aggregate([
-        {
-          $match: {
-            society_id: objectId
-          }
-        },
-        {
-          $group: {
-            _id: '$role',
-
-            count: {
-              $sum: 1
-            },
-
-            active: {
-              $sum: {
-                $cond: [
-                  '$is_active',
-                  1,
-                  0
-                ]
-              }
-            }
-          }
-        }
-      ]);
-
-    const result = {
-      total: 0,
-      active: 0,
-      inactive: 0,
-      manager: 0,
-      admin: 0,
-      resident: 0,
-      watchman: 0
-    };
-
-    stats.forEach(item => {
 
       if (
-        Object.prototype.hasOwnProperty
-          .call(result, item._id)
+        !isValidObjectId(
+          societyId
+        )
       ) {
 
-        result[item._id] =
-          item.count;
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid society ID'
+        });
 
       }
 
-      result.total +=
-        item.count;
 
-      result.active +=
-        item.active;
-    });
+      const objectId =
+        new mongoose.Types.ObjectId(
+          societyId
+        );
 
-    result.inactive =
-      result.total -
-      result.active;
 
-    return res.status(200).json({
-      success: true,
-      data: result
-    });
+      const stats =
+        await User.aggregate([
 
-  } catch (error) {
-    next(error);
-  }
-};
+          {
+            $match: {
+
+              society_id:
+                objectId,
+
+              /*
+               * Super Admin must never
+               * be included in society stats.
+               */
+
+              role: {
+                $ne:
+                  'super_admin'
+              }
+
+            }
+          },
+
+
+          {
+            $group: {
+
+              _id:
+                '$role',
+
+              count: {
+                $sum: 1
+              },
+
+              active: {
+
+                $sum: {
+
+                  $cond: [
+
+                    '$is_active',
+
+                    1,
+
+                    0
+
+                  ]
+
+                }
+
+              }
+
+            }
+
+          }
+
+        ]);
+
+
+      const result = {
+
+        total: 0,
+
+        active: 0,
+
+        inactive: 0,
+
+        manager: 0,
+
+        admin: 0,
+
+        resident: 0,
+
+        watchman: 0
+
+      };
+
+
+      stats.forEach(
+        item => {
+
+          if (
+            Object.prototype.hasOwnProperty
+              .call(
+                result,
+                item._id
+              )
+          ) {
+
+            result[item._id] =
+              item.count;
+
+          }
+
+
+          result.total +=
+            item.count;
+
+
+          result.active +=
+            item.active;
+
+        }
+      );
+
+
+      result.inactive =
+        result.total -
+        result.active;
+
+
+      return res.status(200).json({
+
+        success: true,
+
+        data:
+          result
+
+      });
+
+    } catch (error) {
+
+      next(error);
+
+    }
+
+  };

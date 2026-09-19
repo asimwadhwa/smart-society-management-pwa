@@ -1,153 +1,81 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-/**
- * Authenticate user using JWT
- *
- * Token sources:
- * 1. HTTP-only cookie
- * 2. Authorization: Bearer <token>
- *
- * JWT payload:
- * {
- *   user_id: "<MongoDB User ID>"
- * }
- */
 const authenticate = async (req, res, next) => {
   try {
     let token = null;
 
-    // ==========================================================
-    // GET TOKEN FROM COOKIE
-    // ==========================================================
-    if (
-      req.cookies &&
-      req.cookies.token
-    ) {
+    // Cookie
+    if (req.cookies?.token) {
       token = req.cookies.token;
     }
 
-    // ==========================================================
-    // GET TOKEN FROM AUTHORIZATION HEADER
-    // ==========================================================
-    if (
-      !token &&
-      req.headers.authorization
-    ) {
+    // Authorization header
+    if (!token) {
       const authHeader =
         req.headers.authorization;
 
       if (
+        authHeader &&
         authHeader.startsWith('Bearer ')
       ) {
         token =
-          authHeader
-            .substring(7)
-            .trim();
+          authHeader.split(' ')[1];
       }
     }
 
-    // ==========================================================
-    // TOKEN NOT FOUND
-    // ==========================================================
     if (!token) {
       return res.status(401).json({
         success: false,
-        message:
-          'Access denied. No token provided.'
+        message: 'Authentication required'
       });
     }
 
-    // ==========================================================
-    // VERIFY JWT
-    // ==========================================================
-    let decoded;
-
-    try {
-      decoded = jwt.verify(
+    const decoded =
+      jwt.verify(
         token,
         process.env.JWT_SECRET
       );
-    } catch (error) {
 
-      if (
-        error.name ===
-        'TokenExpiredError'
-      ) {
-        return res.status(401).json({
-          success: false,
-          message: 'Token expired.'
-        });
-      }
-
+    if (!decoded?.user_id) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid token.'
+        message: 'Invalid authentication token'
       });
     }
 
-    // ==========================================================
-    // CHECK USER ID IN TOKEN
-    // ==========================================================
-    if (!decoded || !decoded.user_id) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid token.'
-      });
-    }
-
-    // ==========================================================
-    // FIND USER
-    // ==========================================================
     const user =
       await User.findById(
         decoded.user_id
-      ).select(
-        '-password_hash'
-      );
+      ).select('-password');
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message:
-          'User not found.'
+        message: 'User not found'
       });
     }
 
-    // ==========================================================
-    // CHECK ACTIVE ACCOUNT
-    // ==========================================================
     if (!user.is_active) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
-        message:
-          'Account is deactivated.'
+        message: 'Your account is inactive'
       });
     }
 
-    // ==========================================================
-    // SOCIETY VALIDATION
-    //
-    // Super Admin:
-    //   society_id = null
-    //
-    // Manager/Admin/Resident/Watchman:
-    //   society_id must exist
-    // ==========================================================
+    // Every user except Super Admin
+    // must belong to a society
     if (
       user.role !== 'super_admin' &&
       !user.society_id
     ) {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
         message:
-          'User is not assigned to any society.'
+          'User is not assigned to any society'
       });
     }
 
-    // ==========================================================
-    // ATTACH USER TO REQUEST
-    // ==========================================================
     req.user = user;
 
     next();
@@ -159,35 +87,42 @@ const authenticate = async (req, res, next) => {
       error
     );
 
-    next(error);
+    return res.status(401).json({
+      success: false,
+      message:
+        'Invalid or expired authentication token'
+    });
   }
 };
 
-/**
- * Authorize user based on role
- */
+
+// =========================================================
+// ROLE AUTHORIZATION
+// =========================================================
+
 const authorize = (...roles) => {
   return (req, res, next) => {
 
-    // ==========================================================
-    // AUTHENTICATION REQUIRED
-    // ==========================================================
     if (!req.user) {
       return res.status(401).json({
         success: false,
         message:
-          'Authentication required.'
+          'Authentication required'
       });
     }
 
-    // ==========================================================
-    // ROLE CHECK
-    // ==========================================================
     if (
-      !roles.includes(
-        req.user.role
-      )
+      !roles.includes(req.user.role)
     ) {
+      console.log(
+        'Authorization failed:',
+        {
+          userId: req.user._id,
+          role: req.user.role,
+          requiredRoles: roles
+        }
+      );
+
       return res.status(403).json({
         success: false,
         message:
