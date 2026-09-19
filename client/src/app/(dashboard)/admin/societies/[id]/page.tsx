@@ -1,13 +1,9 @@
 'use client';
 
-import {
-  useEffect,
-  useState
-} from 'react';
-
+import { useEffect, useState } from 'react';
 import {
   useParams,
-  useRouter
+  useRouter,
 } from 'next/navigation';
 
 import api from '@/lib/api';
@@ -30,9 +26,9 @@ import {
   X,
   Loader2,
   ShieldCheck,
-  UserRoundCog,
+  UserPlus,
   UserMinus,
-  UserPlus
+  ArrowRightLeft,
 } from 'lucide-react';
 
 interface Society {
@@ -44,8 +40,6 @@ interface Society {
   state: string;
   contact_number: string;
   is_active: boolean;
-  created_at?: string;
-  updated_at?: string;
 }
 
 interface SocietyStats {
@@ -68,14 +62,14 @@ interface Manager {
   is_active?: boolean;
 }
 
-interface SocietyUser {
+interface CandidateUser {
   _id: string;
-  name: string;
-  email: string;
+  name?: string;
+  email?: string;
   phone?: string;
   flat_no?: string;
-  role: string;
-  is_active: boolean;
+  role?: string;
+  is_active?: boolean;
 }
 
 interface ManagerForm {
@@ -91,133 +85,78 @@ const emptyManagerForm: ManagerForm = {
   email: '',
   password: '',
   phone: '',
-  flat_no: ''
+  flat_no: '',
 };
 
 export default function SocietyDetailsPage() {
+  const params = useParams();
+  const router = useRouter();
 
-  const params =
-    useParams();
+  const { user, loading: authLoading } =
+    useAuth();
 
-  const router =
-    useRouter();
-
-  const {
-    user,
-    loading: authLoading
-  } = useAuth();
-
-  const {
-    toast
-  } = useToast();
+  const { toast } = useToast();
 
   const societyId =
     typeof params?.id === 'string'
       ? params.id
       : '';
 
-  const [
-    society,
-    setSociety
-  ] =
-    useState<Society | null>(
-      null
-    );
+  const [society, setSociety] =
+    useState<Society | null>(null);
 
-  const [
-    stats,
-    setStats
-  ] =
-    useState<SocietyStats | null>(
-      null
-    );
+  const [stats, setStats] =
+    useState<SocietyStats | null>(null);
 
-  const [
-    manager,
-    setManager
-  ] =
-    useState<Manager | null>(
-      null
-    );
+  const [manager, setManager] =
+    useState<Manager | null>(null);
 
-  const [
-    societyUsers,
-    setSocietyUsers
-  ] =
-    useState<SocietyUser[]>(
-      []
-    );
+  const [candidates, setCandidates] =
+    useState<CandidateUser[]>([]);
 
-  const [
-    loading,
-    setLoading
-  ] =
+  const [loading, setLoading] =
     useState(true);
 
-  const [
-    refreshing,
-    setRefreshing
-  ] =
+  const [refreshing, setRefreshing] =
     useState(false);
 
-  const [
-    showManagerForm,
-    setShowManagerForm
-  ] =
+  const [showManagerForm, setShowManagerForm] =
     useState(false);
 
-  const [
-    managerMode,
-    setManagerMode
-  ] =
-    useState<
-      'new' | 'existing'
-    >('existing');
+  const [managerMode, setManagerMode] =
+    useState<'existing' | 'new'>(
+      'existing'
+    );
 
-  const [
-    selectedUserId,
-    setSelectedUserId
-  ] =
+  const [selectedUserId, setSelectedUserId] =
     useState('');
 
-  const [
-    managerForm,
-    setManagerForm
-  ] =
+  const [managerForm, setManagerForm] =
     useState<ManagerForm>(
       emptyManagerForm
     );
 
-  const [
-    savingManager,
-    setSavingManager
-  ] =
+  const [savingManager, setSavingManager] =
     useState(false);
 
-  const [
-    removingManager,
-    setRemovingManager
-  ] =
+  const [removingManager, setRemovingManager] =
     useState(false);
 
   const isSuperAdmin =
-    user?.role ===
-    'super_admin';
+    user?.role === 'super_admin';
 
   // ============================================================
-  // LOAD SOCIETY
+  // FETCH SOCIETY
   // ============================================================
 
   const fetchSociety = async (
     showRefresh = false
   ) => {
-
     if (!societyId) {
       return;
     }
 
     try {
-
       if (showRefresh) {
         setRefreshing(true);
       } else {
@@ -228,26 +167,28 @@ export default function SocietyDetailsPage() {
         societyResponse,
         statsResponse,
         managerResponse,
-        usersResponse
-      ] =
-        await Promise.all([
+        usersResponse,
+      ] = await Promise.all([
+        api.get(
+          `/societies/${societyId}`
+        ),
 
-          api.get(
-            `/societies/${societyId}`
-          ),
+        api.get(
+          `/societies/${societyId}/stats`
+        ),
 
-          api.get(
-            `/societies/${societyId}/stats`
-          ),
-
-          api.get(
+        api
+          .get(
             `/societies/${societyId}/manager`
-          ),
+          )
+          .catch(() => null),
 
-          api.get(
+        api
+          .get(
             `/users?society_id=${societyId}&limit=100`
           )
-        ]);
+          .catch(() => null),
+      ]);
 
       if (
         !societyResponse.data?.success
@@ -258,9 +199,10 @@ export default function SocietyDetailsPage() {
         );
       }
 
-      setSociety(
-        societyResponse.data.data
-      );
+      const societyData =
+        societyResponse.data.data;
+
+      setSociety(societyData);
 
       setStats(
         statsResponse.data?.success
@@ -268,22 +210,46 @@ export default function SocietyDetailsPage() {
           : null
       );
 
-      setManager(
-        managerResponse.data?.success
+      const managerData =
+        managerResponse?.data?.success
           ? managerResponse.data.data ||
-              null
-          : null
-      );
+            null
+          : null;
 
-      setSocietyUsers(
-        usersResponse.data?.success
-          ? usersResponse.data.data ||
-              []
-          : []
-      );
+      setManager(managerData);
 
+      // ========================================================
+      // AVAILABLE USERS FOR MANAGER
+      // ========================================================
+
+      const usersData =
+        usersResponse?.data?.success
+          ? usersResponse.data.data
+          : [];
+
+      const usersArray =
+        Array.isArray(usersData)
+          ? usersData
+          : Array.isArray(
+              usersData?.users
+            )
+          ? usersData.users
+          : [];
+
+      const eligibleUsers =
+        usersArray.filter(
+          (item: CandidateUser) =>
+            item._id !==
+              managerData?._id &&
+            item.is_active !== false &&
+            (item.role === 'resident' ||
+              item.role === 'admin')
+        );
+
+      setCandidates(
+        eligibleUsers
+      );
     } catch (error: any) {
-
       console.error(
         'Failed to load society:',
         error
@@ -292,19 +258,14 @@ export default function SocietyDetailsPage() {
       toast({
         title:
           'Unable to load society',
-
         description:
           error?.response?.data
             ?.message ||
           error?.message ||
           'Please try again.',
-
-        variant:
-          'destructive'
+        variant: 'destructive',
       });
-
     } finally {
-
       setLoading(false);
       setRefreshing(false);
     }
@@ -315,15 +276,12 @@ export default function SocietyDetailsPage() {
   // ============================================================
 
   useEffect(() => {
-
     if (authLoading) {
       return;
     }
 
     if (!user) {
-      router.replace(
-        '/login'
-      );
+      router.replace('/login');
       return;
     }
 
@@ -338,290 +296,110 @@ export default function SocietyDetailsPage() {
   }, [
     authLoading,
     user,
-    societyId
+    societyId,
   ]);
-
-  // ============================================================
-  // AVAILABLE USERS
-  // ============================================================
-
-  const availableManagerUsers =
-    societyUsers.filter(
-      item =>
-        item.is_active &&
-        (
-          item.role ===
-            'resident' ||
-          item.role ===
-            'admin'
-        )
-    );
 
   // ============================================================
   // OPEN MANAGER FORM
   // ============================================================
 
-  const openManagerForm =
-    () => {
+  const openManagerForm = () => {
+    if (!society) {
+      return;
+    }
 
-      if (!society) {
-        return;
-      }
+    if (!society.is_active) {
+      toast({
+        title: 'Society inactive',
+        description:
+          'Activate the society before assigning a manager.',
+        variant: 'destructive',
+      });
 
-      if (
-        !society.is_active
-      ) {
-        toast({
-          title:
-            'Society inactive',
+      return;
+    }
 
-          description:
-            'Activate the society before assigning a manager.',
+    setManagerMode(
+      candidates.length > 0
+        ? 'existing'
+        : 'new'
+    );
 
-          variant:
-            'destructive'
-        });
+    setSelectedUserId('');
 
-        return;
-      }
+    setManagerForm(
+      emptyManagerForm
+    );
 
-      setManagerMode(
-        availableManagerUsers.length >
-          0
-          ? 'existing'
-          : 'new'
-      );
-
-      setSelectedUserId(
-        ''
-      );
-
-      setManagerForm(
-        emptyManagerForm
-      );
-
-      setShowManagerForm(
-        true
-      );
-    };
+    setShowManagerForm(true);
+  };
 
   // ============================================================
   // CLOSE MANAGER FORM
   // ============================================================
 
-  const closeManagerForm =
-    () => {
+  const closeManagerForm = () => {
+    if (savingManager) {
+      return;
+    }
 
-      if (
-        savingManager
-      ) {
-        return;
-      }
+    setShowManagerForm(false);
 
-      setShowManagerForm(
-        false
-      );
+    setSelectedUserId('');
 
-      setSelectedUserId(
-        ''
-      );
-
-      setManagerForm(
-        emptyManagerForm
-      );
-    };
+    setManagerForm(
+      emptyManagerForm
+    );
+  };
 
   // ============================================================
-  // MANAGER INPUT
+  // FORM INPUT
   // ============================================================
 
-  const handleManagerInput =
-    (
-      field: keyof ManagerForm,
-      value: string
-    ) => {
-
-      setManagerForm(
-        previous => ({
-          ...previous,
-          [field]:
-            value
-        })
-      );
-    };
+  const handleManagerInput = (
+    field: keyof ManagerForm,
+    value: string
+  ) => {
+    setManagerForm(
+      previous => ({
+        ...previous,
+        [field]: value,
+      })
+    );
+  };
 
   // ============================================================
-  // ASSIGN / CHANGE MANAGER
+  // ASSIGN EXISTING USER
   // ============================================================
 
-  const saveManager =
-    async (
-      event: React.FormEvent
-    ) => {
-
-      event.preventDefault();
-
+  const assignExistingManager =
+    async () => {
       if (!society) {
         return;
       }
 
+      if (!selectedUserId) {
+        toast({
+          title:
+            'Select a user',
+          description:
+            'Please select an active resident or admin.',
+          variant: 'destructive',
+        });
+
+        return;
+      }
+
       try {
-
-        setSavingManager(
-          true
-        );
-
-        let payload:
-          Record<
-            string,
-            string
-          >;
-
-        // ------------------------------------------------------
-        // EXISTING USER
-        // ------------------------------------------------------
-
-        if (
-          managerMode ===
-          'existing'
-        ) {
-
-          if (
-            !selectedUserId
-          ) {
-
-            toast({
-              title:
-                'Select a user',
-
-              description:
-                'Please select an active resident or admin.',
-
-              variant:
-                'destructive'
-            });
-
-            return;
-          }
-
-          payload = {
-            user_id:
-              selectedUserId
-          };
-
-        }
-
-        // ------------------------------------------------------
-        // NEW MANAGER
-        // ------------------------------------------------------
-
-        else {
-
-          payload = {
-            name:
-              managerForm.name.trim(),
-
-            email:
-              managerForm.email
-                .trim()
-                .toLowerCase(),
-
-            password:
-              managerForm.password,
-
-            phone:
-              managerForm.phone.trim(),
-
-            flat_no:
-              managerForm.flat_no.trim()
-          };
-
-          if (
-            !payload.name ||
-            !payload.email ||
-            !payload.password ||
-            !payload.phone ||
-            !payload.flat_no
-          ) {
-
-            toast({
-              title:
-                'Required fields missing',
-
-              description:
-                'Please fill all manager details.',
-
-              variant:
-                'destructive'
-            });
-
-            return;
-          }
-
-          if (
-            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-              payload.email
-            )
-          ) {
-
-            toast({
-              title:
-                'Invalid email',
-
-              description:
-                'Please enter a valid email address.',
-
-              variant:
-                'destructive'
-            });
-
-            return;
-          }
-
-          if (
-            payload.password.length <
-            8
-          ) {
-
-            toast({
-              title:
-                'Invalid password',
-
-              description:
-                'Password must be at least 8 characters.',
-
-              variant:
-                'destructive'
-            });
-
-            return;
-          }
-
-          if (
-            !/^[6-9]\d{9}$/.test(
-              payload.phone
-            )
-          ) {
-
-            toast({
-              title:
-                'Invalid phone number',
-
-              description:
-                'Enter a valid 10-digit Indian mobile number.',
-
-              variant:
-                'destructive'
-            });
-
-            return;
-          }
-        }
+        setSavingManager(true);
 
         const response =
           await api.put(
             `/societies/${society._id}/manager`,
-            payload
+            {
+              user_id:
+                selectedUserId,
+            }
           );
 
         if (
@@ -634,48 +412,192 @@ export default function SocietyDetailsPage() {
         }
 
         toast({
-          title:
-            manager
-              ? 'Manager changed successfully'
-              : 'Manager assigned successfully',
-
+          title: manager
+            ? 'Manager changed'
+            : 'Manager assigned',
           description:
-            response.data.message
+            manager
+              ? 'The previous manager has been replaced successfully.'
+              : 'The selected user is now the society manager.',
         });
 
         closeManagerForm();
 
-        await fetchSociety(
-          true
-        );
-
+        await fetchSociety(true);
       } catch (error: any) {
-
         console.error(
-          'Manager update error:',
+          'Assign manager error:',
           error
         );
 
         toast({
           title:
-            'Manager update failed',
-
+            'Manager assignment failed',
           description:
             error?.response?.data
               ?.message ||
             error?.message ||
-            'Unable to update manager.',
-
+            'Unable to assign manager.',
           variant:
-            'destructive'
+            'destructive',
+        });
+      } finally {
+        setSavingManager(false);
+      }
+    };
+
+  // ============================================================
+  // CREATE / REPLACE WITH NEW MANAGER
+  // ============================================================
+
+  const createNewManager =
+    async () => {
+      if (!society) {
+        return;
+      }
+
+      const payload = {
+        name:
+          managerForm.name.trim(),
+
+        email:
+          managerForm.email
+            .trim()
+            .toLowerCase(),
+
+        password:
+          managerForm.password,
+
+        phone:
+          managerForm.phone.trim(),
+
+        flat_no:
+          managerForm.flat_no.trim(),
+      };
+
+      if (
+        !payload.name ||
+        !payload.email ||
+        !payload.password ||
+        !payload.phone ||
+        !payload.flat_no
+      ) {
+        toast({
+          title:
+            'Required fields missing',
+          description:
+            'Please fill all manager details.',
+          variant:
+            'destructive',
         });
 
-      } finally {
-
-        setSavingManager(
-          false
-        );
+        return;
       }
+
+      if (
+        !/^[6-9]\d{9}$/.test(
+          payload.phone
+        )
+      ) {
+        toast({
+          title:
+            'Invalid phone number',
+          description:
+            'Enter a valid 10-digit Indian mobile number.',
+          variant:
+            'destructive',
+        });
+
+        return;
+      }
+
+      if (
+        payload.password.length < 8
+      ) {
+        toast({
+          title:
+            'Invalid password',
+          description:
+            'Manager password must be at least 8 characters.',
+          variant:
+            'destructive',
+        });
+
+        return;
+      }
+
+      try {
+        setSavingManager(true);
+
+        const response =
+          await api.put(
+            `/societies/${society._id}/manager`,
+            payload
+          );
+
+        if (
+          !response.data?.success
+        ) {
+          throw new Error(
+            response.data?.message ||
+              'Failed to create manager'
+          );
+        }
+
+        toast({
+          title: manager
+            ? 'Manager replaced'
+            : 'Manager created',
+          description:
+            manager
+              ? 'The previous manager has been replaced with the new manager.'
+              : `${payload.name} is now the manager of ${society.name}.`,
+        });
+
+        closeManagerForm();
+
+        await fetchSociety(true);
+      } catch (error: any) {
+        console.error(
+          'Create manager error:',
+          error
+        );
+
+        toast({
+          title:
+            'Manager creation failed',
+          description:
+            error?.response?.data
+              ?.message ||
+            error?.message ||
+            'Unable to create manager.',
+          variant:
+            'destructive',
+        });
+      } finally {
+        setSavingManager(false);
+      }
+    };
+
+  // ============================================================
+  // SUBMIT MANAGER
+  // ============================================================
+
+  const handleManagerSubmit =
+    async (
+      event: React.FormEvent
+    ) => {
+      event.preventDefault();
+
+      if (
+        managerMode ===
+        'existing'
+      ) {
+        await assignExistingManager();
+        return;
+      }
+
+      await createNewManager();
     };
 
   // ============================================================
@@ -684,17 +606,13 @@ export default function SocietyDetailsPage() {
 
   const removeManager =
     async () => {
-
-      if (
-        !society ||
-        !manager
-      ) {
+      if (!society || !manager) {
         return;
       }
 
       const confirmed =
         window.confirm(
-          `Remove ${manager.name || 'current manager'} as manager of ${society.name}?`
+          `Remove ${manager.name || manager.email || 'the current manager'} as manager of ${society.name}?`
         );
 
       if (!confirmed) {
@@ -702,10 +620,7 @@ export default function SocietyDetailsPage() {
       }
 
       try {
-
-        setRemovingManager(
-          true
-        );
+        setRemovingManager(true);
 
         const response =
           await api.delete(
@@ -724,17 +639,14 @@ export default function SocietyDetailsPage() {
         toast({
           title:
             'Manager removed',
-
           description:
-            response.data.message
+            'The manager has been removed and the account has been deactivated.',
         });
 
-        await fetchSociety(
-          true
-        );
+        setManager(null);
 
+        await fetchSociety(true);
       } catch (error: any) {
-
         console.error(
           'Remove manager error:',
           error
@@ -742,23 +654,17 @@ export default function SocietyDetailsPage() {
 
         toast({
           title:
-            'Unable to remove manager',
-
+            'Manager removal failed',
           description:
             error?.response?.data
               ?.message ||
             error?.message ||
-            'Please try again.',
-
+            'Unable to remove manager.',
           variant:
-            'destructive'
+            'destructive',
         });
-
       } finally {
-
-        setRemovingManager(
-          false
-        );
+        setRemovingManager(false);
       }
     };
 
@@ -900,9 +806,7 @@ export default function SocietyDetailsPage() {
             onClick={() =>
               fetchSociety(true)
             }
-            disabled={
-              refreshing
-            }
+            disabled={refreshing}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
           >
             <RefreshCw
@@ -918,16 +822,15 @@ export default function SocietyDetailsPage() {
 
           <button
             type="button"
-            onClick={
-              openManagerForm
-            }
+            onClick={openManagerForm}
             disabled={
               !society.is_active
             }
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+
             {manager ? (
-              <UserRoundCog className="w-4 h-4" />
+              <ArrowRightLeft className="w-4 h-4" />
             ) : (
               <Plus className="w-4 h-4" />
             )}
@@ -935,6 +838,7 @@ export default function SocietyDetailsPage() {
             {manager
               ? 'Change Manager'
               : 'Add Manager'}
+
           </button>
 
         </div>
@@ -943,23 +847,27 @@ export default function SocietyDetailsPage() {
 
       {/* INFO */}
 
-      <div className="rounded-xl border border-purple-100 bg-purple-50 p-4">
+      <div className="rounded-xl border border-red-100 bg-red-50 p-4">
 
         <div className="flex items-start gap-3">
 
-          <ShieldCheck className="w-5 h-5 text-purple-600 mt-0.5 shrink-0" />
+          <ShieldCheck className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
 
           <div>
 
-            <p className="font-semibold text-purple-800">
+            <p className="font-semibold text-red-800">
               Super Admin Society Management
             </p>
 
-            <p className="text-sm text-purple-700 mt-1">
-              You can assign, change or remove
-              the manager of this society.
-              Only one manager can be assigned
-              at a time.
+            <p className="text-sm text-red-700 mt-1">
+              Manage users and manager of{' '}
+              <strong>
+                {society.name}
+              </strong>
+              {' '}using Society Code{' '}
+              <strong>
+                {society.society_code}
+              </strong>.
             </p>
 
           </div>
@@ -968,7 +876,7 @@ export default function SocietyDetailsPage() {
 
       </div>
 
-      {/* SOCIETY INFORMATION + MANAGER */}
+      {/* SOCIETY + MANAGER */}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
@@ -993,9 +901,7 @@ export default function SocietyDetailsPage() {
                 <Building2 className="w-4 h-4" />
               }
               label="Society Name"
-              value={
-                society.name
-              }
+              value={society.name}
             />
 
             <InfoItem
@@ -1003,9 +909,7 @@ export default function SocietyDetailsPage() {
                 <ShieldCheck className="w-4 h-4" />
               }
               label="Society Code"
-              value={
-                society.society_code
-              }
+              value={society.society_code}
             />
 
             <InfoItem
@@ -1021,9 +925,7 @@ export default function SocietyDetailsPage() {
                 <Phone className="w-4 h-4" />
               }
               label="Contact Number"
-              value={
-                society.contact_number
-              }
+              value={society.contact_number}
             />
 
           </div>
@@ -1047,48 +949,29 @@ export default function SocietyDetailsPage() {
             </div>
 
             {manager && (
-              <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={removeManager}
+                disabled={
+                  removingManager
+                }
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+              >
 
-                <button
-                  type="button"
-                  onClick={
-                    openManagerForm
-                  }
-                  disabled={
-                    !society.is_active
-                  }
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-100 disabled:opacity-50"
-                >
-                  <UserRoundCog className="w-3.5 h-3.5" />
-                  Change
-                </button>
+                {removingManager ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <UserMinus className="w-3.5 h-3.5" />
+                )}
 
-                <button
-                  type="button"
-                  onClick={
-                    removeManager
-                  }
-                  disabled={
-                    removingManager
-                  }
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
-                >
-                  {removingManager ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <UserMinus className="w-3.5 h-3.5" />
-                  )}
+                Remove Manager
 
-                  Remove
-                </button>
-
-              </div>
+              </button>
             )}
 
           </div>
 
           {manager ? (
-
             <div className="space-y-4">
 
               <div className="flex items-center gap-3">
@@ -1151,34 +1034,26 @@ export default function SocietyDetailsPage() {
                 }
               />
 
-              <div className="pt-2">
+              <div className="flex gap-2 pt-2">
 
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                    manager.is_active
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-red-100 text-red-700'
-                  }`}
+                <button
+                  type="button"
+                  onClick={
+                    openManagerForm
+                  }
+                  disabled={
+                    !society.is_active
+                  }
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
                 >
-
-                  {manager.is_active ? (
-                    <CheckCircle2 className="w-3 h-3" />
-                  ) : (
-                    <XCircle className="w-3 h-3" />
-                  )}
-
-                  {manager.is_active
-                    ? 'Active'
-                    : 'Inactive'}
-
-                </span>
+                  <ArrowRightLeft className="w-4 h-4" />
+                  Change Manager
+                </button>
 
               </div>
 
             </div>
-
           ) : (
-
             <div className="rounded-xl border border-dashed border-purple-200 bg-purple-50 p-6 text-center">
 
               <UserCog className="w-10 h-10 mx-auto text-purple-300" />
@@ -1188,7 +1063,7 @@ export default function SocietyDetailsPage() {
               </p>
 
               <p className="mt-1 text-sm text-purple-600">
-                Assign an existing society user
+                Assign an existing resident/admin
                 or create a new manager.
               </p>
 
@@ -1203,11 +1078,10 @@ export default function SocietyDetailsPage() {
                 className="mt-4 inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" />
-                Assign Manager
+                Add Manager
               </button>
 
             </div>
-
           )}
 
         </div>
@@ -1233,8 +1107,7 @@ export default function SocietyDetailsPage() {
           <StatCard
             label="Total Users"
             value={
-              stats?.totalUsers ||
-              0
+              stats?.totalUsers || 0
             }
             icon={
               <Users className="w-5 h-5" />
@@ -1244,8 +1117,7 @@ export default function SocietyDetailsPage() {
           <StatCard
             label="Active"
             value={
-              stats?.activeUsers ||
-              0
+              stats?.activeUsers || 0
             }
             icon={
               <CheckCircle2 className="w-5 h-5" />
@@ -1255,8 +1127,7 @@ export default function SocietyDetailsPage() {
           <StatCard
             label="Inactive"
             value={
-              stats?.inactiveUsers ||
-              0
+              stats?.inactiveUsers || 0
             }
             icon={
               <XCircle className="w-5 h-5" />
@@ -1266,8 +1137,7 @@ export default function SocietyDetailsPage() {
           <StatCard
             label="Managers"
             value={
-              stats?.managers ||
-              0
+              stats?.managers || 0
             }
             icon={
               <Crown className="w-5 h-5" />
@@ -1277,8 +1147,7 @@ export default function SocietyDetailsPage() {
           <StatCard
             label="Admins"
             value={
-              stats?.admins ||
-              0
+              stats?.admins || 0
             }
             icon={
               <UserCog className="w-5 h-5" />
@@ -1288,8 +1157,7 @@ export default function SocietyDetailsPage() {
           <StatCard
             label="Residents"
             value={
-              stats?.residents ||
-              0
+              stats?.residents || 0
             }
             icon={
               <Users className="w-5 h-5" />
@@ -1347,7 +1215,11 @@ export default function SocietyDetailsPage() {
             className="flex items-center gap-3 rounded-lg border border-purple-200 bg-purple-50 p-4 text-left hover:bg-purple-100 disabled:opacity-50"
           >
 
-            <UserCog className="w-5 h-5 text-purple-600" />
+            {manager ? (
+              <ArrowRightLeft className="w-5 h-5 text-purple-600" />
+            ) : (
+              <UserPlus className="w-5 h-5 text-purple-600" />
+            )}
 
             <div>
 
@@ -1359,7 +1231,7 @@ export default function SocietyDetailsPage() {
 
               <p className="text-xs text-purple-600 mt-0.5">
                 {manager
-                  ? `Current: ${manager.name || 'Manager'}`
+                  ? 'Replace current manager'
                   : 'Assign society manager'}
               </p>
 
@@ -1397,10 +1269,11 @@ export default function SocietyDetailsPage() {
 
       </div>
 
-      {/* MANAGER MODAL */}
+      {/* ======================================================
+          MANAGER MODAL
+      ====================================================== */}
 
       {showManagerForm && (
-
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4">
 
           <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
@@ -1412,11 +1285,9 @@ export default function SocietyDetailsPage() {
               <div>
 
                 <h2 className="text-lg font-bold text-slate-900">
-
                   {manager
                     ? 'Change Manager'
-                    : 'Assign Manager'}
-
+                    : 'Add Manager'}
                 </h2>
 
                 <p className="text-sm text-slate-500 mt-1">
@@ -1435,16 +1306,14 @@ export default function SocietyDetailsPage() {
                 }
                 className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
               >
-
                 <X className="w-5 h-5" />
-
               </button>
 
             </div>
 
             <form
               onSubmit={
-                saveManager
+                handleManagerSubmit
               }
               className="p-5 space-y-5"
             >
@@ -1452,27 +1321,27 @@ export default function SocietyDetailsPage() {
               {/* CURRENT MANAGER */}
 
               {manager && (
-
-                <div className="rounded-lg border border-red-100 bg-red-50 p-4">
+                <div className="rounded-lg border border-orange-100 bg-orange-50 p-4">
 
                   <div className="flex items-start gap-3">
 
-                    <Crown className="w-5 h-5 text-red-600 mt-0.5" />
+                    <ArrowRightLeft className="w-5 h-5 text-orange-600 mt-0.5" />
 
                     <div>
 
-                      <p className="text-sm font-semibold text-red-800">
+                      <p className="text-sm font-semibold text-orange-800">
                         Current Manager
                       </p>
 
-                      <p className="text-sm text-red-700 mt-1">
-                        {manager.name}
+                      <p className="text-sm text-orange-700 mt-1">
+                        {manager.name ||
+                          manager.email ||
+                          'Current Manager'}
                       </p>
 
-                      <p className="text-xs text-red-600 mt-1">
-                        After changing the manager,
-                        the current manager will become
-                        an inactive resident.
+                      <p className="text-xs text-orange-600 mt-1">
+                        The current manager will be
+                        deactivated after replacement.
                       </p>
 
                     </div>
@@ -1480,7 +1349,6 @@ export default function SocietyDetailsPage() {
                   </div>
 
                 </div>
-
               )}
 
               {/* MODE */}
@@ -1500,26 +1368,17 @@ export default function SocietyDetailsPage() {
                         'existing'
                       )
                     }
-                    disabled={
-                      availableManagerUsers.length ===
-                      0
-                    }
                     className={`rounded-xl border p-4 text-left transition ${
                       managerMode ===
                       'existing'
-                        ? 'border-blue-500 bg-blue-50'
+                        ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100'
                         : 'border-slate-200 bg-white hover:bg-slate-50'
-                    } ${
-                      availableManagerUsers.length ===
-                      0
-                        ? 'opacity-50 cursor-not-allowed'
-                        : ''
                     }`}
                   >
 
                     <div className="flex items-center gap-3">
 
-                      <UserPlus className="w-5 h-5 text-blue-600" />
+                      <UserCog className="w-5 h-5 text-blue-600" />
 
                       <div>
 
@@ -1547,14 +1406,14 @@ export default function SocietyDetailsPage() {
                     className={`rounded-xl border p-4 text-left transition ${
                       managerMode ===
                       'new'
-                        ? 'border-purple-500 bg-purple-50'
+                        ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-100'
                         : 'border-slate-200 bg-white hover:bg-slate-50'
                     }`}
                   >
 
                     <div className="flex items-center gap-3">
 
-                      <UserCog className="w-5 h-5 text-purple-600" />
+                      <UserPlus className="w-5 h-5 text-purple-600" />
 
                       <div>
 
@@ -1563,7 +1422,7 @@ export default function SocietyDetailsPage() {
                         </p>
 
                         <p className="text-xs text-slate-500 mt-1">
-                          Create new account
+                          Create new manager account
                         </p>
 
                       </div>
@@ -1580,77 +1439,131 @@ export default function SocietyDetailsPage() {
 
               {managerMode ===
                 'existing' && (
-
-                <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <div>
 
                   <label className="block">
 
-                    <span className="mb-2 block text-sm font-medium text-slate-700">
+                    <span className="mb-1.5 block text-sm font-medium text-slate-700">
                       Select Resident / Admin
+                      <span className="text-red-500">
+                        {' '}*
+                      </span>
                     </span>
 
-                    <select
-                      value={
-                        selectedUserId
-                      }
-                      onChange={
-                        event =>
+                    {candidates.length >
+                    0 ? (
+                      <select
+                        value={
+                          selectedUserId
+                        }
+                        onChange={event =>
                           setSelectedUserId(
-                            event.target.value
+                            event.target
+                              .value
                           )
-                      }
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    >
+                        }
+                        required
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      >
 
-                      <option value="">
-                        Select user
-                      </option>
+                        <option value="">
+                          Select user
+                        </option>
 
-                      {availableManagerUsers.map(
-                        item => (
-                          <option
-                            key={
-                              item._id
-                            }
-                            value={
-                              item._id
-                            }
-                          >
-                            {item.name}
-                            {' - '}
-                            {item.role}
-                            {item.flat_no
-                              ? ` - Flat ${item.flat_no}`
-                              : ''}
-                          </option>
-                        )
-                      )}
+                        {candidates.map(
+                          candidate => (
+                            <option
+                              key={
+                                candidate._id
+                              }
+                              value={
+                                candidate._id
+                              }
+                            >
+                              {candidate.name ||
+                                'User'}{' '}
+                              —{' '}
+                              {candidate.flat_no ||
+                                'No Flat'}{' '}
+                              —{' '}
+                              {candidate.role ||
+                                'resident'}
+                            </option>
+                          )
+                        )}
 
-                    </select>
+                      </select>
+                    ) : (
+                      <div className="rounded-lg border border-orange-200 bg-orange-50 p-3">
+
+                        <p className="text-sm font-medium text-orange-800">
+                          No eligible existing users
+                        </p>
+
+                        <p className="text-xs text-orange-700 mt-1">
+                          There is no active resident
+                          or admin available for
+                          manager promotion.
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setManagerMode(
+                              'new'
+                            )
+                          }
+                          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          Create New Manager
+                        </button>
+
+                      </div>
+                    )}
 
                   </label>
 
-                  {availableManagerUsers.length ===
-                    0 && (
-
-                    <p className="mt-2 text-xs text-red-600">
-                      No active resident/admin
-                      is available. Choose
-                      "New Manager".
-                    </p>
-
-                  )}
-
                 </div>
-
               )}
 
               {/* NEW MANAGER */}
 
               {managerMode ===
                 'new' && (
+                <div className="space-y-4">
 
-                <div className="rounded-xl border border-purple-100 bg-purple-50 p-4">
+                  <div className="rounded-lg border border-purple-100 bg-purple-50 p-4">
+
+                    <div className="flex items-start gap-3">
+
+                      <Crown className="w-5 h-5 text-purple-600 mt-0.5" />
+
+                      <div>
+
+                        <p className="text-sm font-semibold text-purple-800">
+                          New Manager Account
+                        </p>
+
+                        <p className="text-xs text-purple-700 mt-1">
+                          Society:{' '}
+                          <strong>
+                            {society.name}
+                          </strong>
+                        </p>
+
+                        <p className="text-xs text-purple-700 mt-1">
+                          Society Code:{' '}
+                          <strong>
+                            {society.society_code}
+                          </strong>
+                        </p>
+
+                      </div>
+
+                    </div>
+
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
@@ -1660,12 +1573,11 @@ export default function SocietyDetailsPage() {
                       value={
                         managerForm.name
                       }
-                      onChange={
-                        value =>
-                          handleManagerInput(
-                            'name',
-                            value
-                          )
+                      onChange={value =>
+                        handleManagerInput(
+                          'name',
+                          value
+                        )
                       }
                       placeholder="Manager Name"
                     />
@@ -1677,12 +1589,11 @@ export default function SocietyDetailsPage() {
                       value={
                         managerForm.email
                       }
-                      onChange={
-                        value =>
-                          handleManagerInput(
-                            'email',
-                            value
-                          )
+                      onChange={value =>
+                        handleManagerInput(
+                          'email',
+                          value
+                        )
                       }
                       placeholder="manager@example.com"
                     />
@@ -1693,20 +1604,19 @@ export default function SocietyDetailsPage() {
                       value={
                         managerForm.phone
                       }
-                      onChange={
-                        value =>
-                          handleManagerInput(
-                            'phone',
-                            value
-                              .replace(
-                                /\D/g,
-                                ''
-                              )
-                              .slice(
-                                0,
-                                10
-                              )
-                          )
+                      onChange={value =>
+                        handleManagerInput(
+                          'phone',
+                          value
+                            .replace(
+                              /\D/g,
+                              ''
+                            )
+                            .slice(
+                              0,
+                              10
+                            )
+                        )
                       }
                       placeholder="9876543210"
                       maxLength={10}
@@ -1718,14 +1628,13 @@ export default function SocietyDetailsPage() {
                       value={
                         managerForm.flat_no
                       }
-                      onChange={
-                        value =>
-                          handleManagerInput(
-                            'flat_no',
-                            value
-                          )
+                      onChange={value =>
+                        handleManagerInput(
+                          'flat_no',
+                          value
+                        )
                       }
-                      placeholder="A-101"
+                      placeholder="OFFICE / A-101"
                     />
 
                     <div className="md:col-span-2">
@@ -1737,12 +1646,11 @@ export default function SocietyDetailsPage() {
                         value={
                           managerForm.password
                         }
-                        onChange={
-                          value =>
-                            handleManagerInput(
-                              'password',
-                              value
-                            )
+                        onChange={value =>
+                          handleManagerInput(
+                            'password',
+                            value
+                          )
                         }
                         placeholder="Minimum 8 characters"
                       />
@@ -1752,7 +1660,6 @@ export default function SocietyDetailsPage() {
                   </div>
 
                 </div>
-
               )}
 
               {/* BUTTONS */}
@@ -1776,12 +1683,10 @@ export default function SocietyDetailsPage() {
                   type="submit"
                   disabled={
                     savingManager ||
-                    (
-                      managerMode ===
+                    (managerMode ===
                       'existing' &&
-                      availableManagerUsers.length ===
-                        0
-                    )
+                      candidates.length ===
+                        0)
                   }
                   className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-5 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
                 >
@@ -1791,10 +1696,12 @@ export default function SocietyDetailsPage() {
                   )}
 
                   {savingManager
-                    ? 'Saving...'
+                    ? manager
+                      ? 'Changing Manager...'
+                      : 'Assigning Manager...'
                     : manager
-                      ? 'Change Manager'
-                      : 'Assign Manager'}
+                    ? 'Change Manager'
+                    : 'Assign Manager'}
 
                 </button>
 
@@ -1805,27 +1712,25 @@ export default function SocietyDetailsPage() {
           </div>
 
         </div>
-
       )}
 
     </div>
   );
 }
 
-// ============================================================
-// INFO ITEM
-// ============================================================
+/* =========================================================
+   INFO ITEM
+========================================================= */
 
 function InfoItem({
   icon,
   label,
-  value
+  value,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
 }) {
-
   return (
     <div className="flex items-start gap-3">
 
@@ -1849,20 +1754,19 @@ function InfoItem({
   );
 }
 
-// ============================================================
-// STAT CARD
-// ============================================================
+/* =========================================================
+   STAT CARD
+========================================================= */
 
 function StatCard({
   label,
   value,
-  icon
+  icon,
 }: {
   label: string;
   value: number;
   icon: React.ReactNode;
 }) {
-
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
 
@@ -1890,9 +1794,9 @@ function StatCard({
   );
 }
 
-// ============================================================
-// FORM FIELD
-// ============================================================
+/* =========================================================
+   FORM FIELD
+========================================================= */
 
 function FormField({
   label,
@@ -1901,19 +1805,16 @@ function FormField({
   onChange,
   placeholder,
   type = 'text',
-  maxLength
+  maxLength,
 }: {
   label: string;
   required?: boolean;
   value: string;
-  onChange: (
-    value: string
-  ) => void;
+  onChange: (value: string) => void;
   placeholder?: string;
   type?: string;
   maxLength?: number;
 }) {
-
   return (
     <label className="block">
 
@@ -1932,21 +1833,14 @@ function FormField({
       <input
         type={type}
         value={value}
-        onChange={
-          event =>
-            onChange(
-              event.target.value
-            )
+        onChange={event =>
+          onChange(
+            event.target.value
+          )
         }
-        placeholder={
-          placeholder
-        }
-        maxLength={
-          maxLength
-        }
-        required={
-          required
-        }
+        placeholder={placeholder}
+        maxLength={maxLength}
+        required={required}
         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
       />
 
