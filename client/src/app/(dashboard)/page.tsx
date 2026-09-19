@@ -590,20 +590,9 @@ export default function DashboardPage() {
   // SCROLL TO SOCIETIES
   // ==========================================================
 
-  const handleOpenSocieties =
-    () => {
-      const element =
-        document.getElementById(
-          'societies-section'
-        );
-
-      if (element) {
-        element.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
-      }
-    };
+  const handleOpenSocieties = () => {
+    router.push('/admin/societies');
+  };
 
 
   const handleOpenUsers =
