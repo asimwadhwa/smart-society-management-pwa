@@ -154,28 +154,20 @@ export default function SocietiesPage() {
   };
 
   useEffect(() => {
-    if (authLoading) {
-      return;
-    }
+  if (authLoading) {
+    return;
+  }
 
-    if (!user) {
-      router.replace('/login');
-      return;
-    }
+  if (!user) {
+    router.replace('/login');
+    return;
+  }
 
-    if (!isSuperAdmin) {
-      router.replace('/');
-      return;
-    }
+  fetchSocieties();
 
-    fetchSocieties();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [authLoading, user]);
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    authLoading,
-    user,
-    isSuperAdmin,
-  ]);
 
   if (
     authLoading ||
@@ -215,9 +207,9 @@ export default function SocietiesPage() {
     );
   }
 
-  if (!isSuperAdmin) {
-    return null;
-  }
+if (!user) {
+  return null;
+}
 
   const totalSocieties =
     societies.length;
