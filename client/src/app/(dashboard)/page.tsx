@@ -606,6 +606,24 @@ export default function DashboardPage() {
     };
 
 
+  const handleOpenUsers =
+    () => {
+      router.push('/admin/users');
+    };
+
+
+  const handleOpenPayments =
+    () => {
+      router.push('/admin/payments');
+    };
+
+
+  const handleOpenComplaints =
+    () => {
+      router.push('/admin/complaints');
+    };
+
+
   // ==========================================================
   // SELECT SOCIETY
   // ==========================================================
@@ -2028,14 +2046,7 @@ export default function DashboardPage() {
 
               <Button
                 type="button"
-                onClick={() => {
-                  toast({
-                    title:
-                      'Users Management',
-                    description:
-                      'Super Admin user management will be handled society-wise.',
-                  });
-                }}
+                onClick={handleOpenUsers}
                 variant="secondary"
                 className="
                   w-full
@@ -2074,14 +2085,7 @@ export default function DashboardPage() {
 
               <Button
                 type="button"
-                onClick={() => {
-                  toast({
-                    title:
-                      'Payments',
-                    description:
-                      'Super Admin payment overview will be available in the society-wise management section.',
-                  });
-                }}
+                onClick={handleOpenPayments}
                 variant="secondary"
                 className="
                   w-full
@@ -2120,14 +2124,7 @@ export default function DashboardPage() {
 
               <Button
                 type="button"
-                onClick={() => {
-                  toast({
-                    title:
-                      'Complaints',
-                    description:
-                      'Super Admin complaint overview will be available in the society-wise management section.',
-                  });
-                }}
+                onClick={handleOpenComplaints}
                 variant="secondary"
                 className="
                   w-full

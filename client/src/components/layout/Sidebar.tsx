@@ -113,6 +113,16 @@ const superAdminItems: NavItem[] = [
     label: 'Manage Users',
     icon: <Users className="w-5 h-5" />,
   },
+  {
+    href: '/admin/payments',
+    label: 'Payments',
+    icon: <BarChart3 className="w-5 h-5" />,
+  },
+  {
+    href: '/admin/complaints',
+    label: 'Complaints',
+    icon: <FileText className="w-5 h-5" />,
+  },
 ];
 
 
@@ -158,6 +168,16 @@ const mobileSuperAdminItems: NavItem[] = [
     href: '/admin/users',
     label: 'Users',
     icon: <Users className="w-5 h-5" />,
+  },
+  {
+    href: '/admin/payments',
+    label: 'Payments',
+    icon: <BarChart3 className="w-5 h-5" />,
+  },
+  {
+    href: '/admin/complaints',
+    label: 'Complaints',
+    icon: <FileText className="w-5 h-5" />,
   },
 ];
 
