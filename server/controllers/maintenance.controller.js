@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Maintenance = require('../models/Maintenance');
 const PaymentLog = require('../models/PaymentLog');
 const User = require('../models/User');
@@ -56,6 +57,7 @@ exports.getUserMaintenance = async (req, res, next) => {
       count: maintenance.length,
       data: maintenance
     });
+
   } catch (error) {
     console.error(
       'Error fetching user maintenance:',
@@ -178,6 +180,7 @@ exports.getCurrentMonthStatus = async (req, res, next) => {
  */
 exports.getPaymentHistory = async (req, res, next) => {
   try {
+
     const {
       page = 1,
       limit = 10
@@ -230,6 +233,7 @@ exports.getPaymentHistory = async (req, res, next) => {
       payments,
       total
     ] = await Promise.all([
+
       PaymentLog.find(paymentFilter)
         .sort({
           payment_date: -1
@@ -241,6 +245,7 @@ exports.getPaymentHistory = async (req, res, next) => {
       PaymentLog.countDocuments(
         paymentFilter
       )
+
     ]);
 
     return res.status(200).json({
@@ -303,28 +308,37 @@ exports.getAllMaintenance = async (
     const ownSocietyId =
       getSocietyId(req);
 
-    /*
+    const filter = {};
+
+    /**
      * --------------------------------------------------------
      * SOCIETY FILTER
      * --------------------------------------------------------
      */
 
-    const filter = {};
-
     if (isSuperAdmin) {
 
-      // Super Admin:
-      // If society_id is provided,
-      // show only that society.
       if (society_id) {
+
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            society_id
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid society ID'
+          });
+        }
+
         filter.society_id =
-          society_id;
+          new mongoose.Types.ObjectId(
+            society_id
+          );
       }
 
     } else {
 
-      // Manager/Admin:
-      // Always restrict to own society.
       if (!ownSocietyId) {
         return res.status(400).json({
           success: false,
@@ -333,9 +347,29 @@ exports.getAllMaintenance = async (
         });
       }
 
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          ownSocietyId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid society ID'
+        });
+      }
+
       filter.society_id =
-        ownSocietyId;
+        new mongoose.Types.ObjectId(
+          ownSocietyId
+        );
     }
+
+    /**
+     * --------------------------------------------------------
+     * PAGINATION
+     * --------------------------------------------------------
+     */
 
     const pageNumber =
       Math.max(
@@ -356,7 +390,7 @@ exports.getAllMaintenance = async (
       (pageNumber - 1) *
       limitNumber;
 
-    /*
+    /**
      * --------------------------------------------------------
      * STATUS
      * --------------------------------------------------------
@@ -369,7 +403,7 @@ exports.getAllMaintenance = async (
       filter.status = status;
     }
 
-    /*
+    /**
      * --------------------------------------------------------
      * MONTH
      * --------------------------------------------------------
@@ -380,7 +414,7 @@ exports.getAllMaintenance = async (
         parseInt(month);
     }
 
-    /*
+    /**
      * --------------------------------------------------------
      * YEAR
      * --------------------------------------------------------
@@ -391,7 +425,7 @@ exports.getAllMaintenance = async (
         parseInt(year);
     }
 
-    /*
+    /**
      * --------------------------------------------------------
      * FLAT
      * --------------------------------------------------------
@@ -402,7 +436,7 @@ exports.getAllMaintenance = async (
         flat_no;
     }
 
-    /*
+    /**
      * --------------------------------------------------------
      * SORT
      * --------------------------------------------------------
@@ -418,13 +452,10 @@ exports.getAllMaintenance = async (
       sortObj[sort] = 1;
     }
 
-    /*
+    /**
      * --------------------------------------------------------
      * FETCH
      * --------------------------------------------------------
-     *
-     * Populate society so Super Admin can see
-     * exactly which society each record belongs to.
      */
 
     const [
@@ -449,6 +480,7 @@ exports.getAllMaintenance = async (
       Maintenance.countDocuments(
         filter
       )
+
     ]);
 
     return res.status(200).json({
@@ -518,7 +550,39 @@ exports.getPaymentStats = async (
         ? parseInt(year)
         : now.getFullYear();
 
-    /*
+    /**
+     * --------------------------------------------------------
+     * VALIDATE MONTH
+     * --------------------------------------------------------
+     */
+
+    if (
+      isNaN(targetMonth) ||
+      targetMonth < 1 ||
+      targetMonth > 12
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid month'
+      });
+    }
+
+    /**
+     * --------------------------------------------------------
+     * VALIDATE YEAR
+     * --------------------------------------------------------
+     */
+
+    if (
+      isNaN(targetYear)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid year'
+      });
+    }
+
+    /**
      * --------------------------------------------------------
      * FILTER
      * --------------------------------------------------------
@@ -529,14 +593,58 @@ exports.getPaymentStats = async (
       year: targetYear
     };
 
+    /**
+     * --------------------------------------------------------
+     * SUPER ADMIN
+     * --------------------------------------------------------
+     */
+
     if (isSuperAdmin) {
 
+      /**
+       * Specific society selected
+       */
       if (society_id) {
+
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            society_id
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Invalid society ID'
+          });
+        }
+
+        /**
+         * IMPORTANT:
+         *
+         * MongoDB aggregate() does NOT automatically
+         * convert string ObjectId values.
+         *
+         * Therefore explicitly convert society_id
+         * to ObjectId.
+         */
         filter.society_id =
-          society_id;
+          new mongoose.Types.ObjectId(
+            society_id
+          );
       }
 
+      /**
+       * If society_id is not provided,
+       * Super Admin gets all societies.
+       */
+
     } else {
+
+      /**
+       * ------------------------------------------------------
+       * MANAGER / ADMIN
+       * ------------------------------------------------------
+       */
 
       if (!ownSocietyId) {
         return res.status(400).json({
@@ -546,14 +654,28 @@ exports.getPaymentStats = async (
         });
       }
 
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          ownSocietyId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid society ID'
+        });
+      }
+
       filter.society_id =
-        ownSocietyId;
+        new mongoose.Types.ObjectId(
+          ownSocietyId
+        );
     }
 
-    /*
-     * --------------------------------------------------------
-     * AGGREGATE STATUS
-     * --------------------------------------------------------
+    /**
+     * ========================================================
+     * AGGREGATE PAYMENT STATUS
+     * ========================================================
      */
 
     const [
@@ -561,33 +683,47 @@ exports.getPaymentStats = async (
       totals
     ] = await Promise.all([
 
+      /**
+       * STATUS WISE
+       */
       Maintenance.aggregate([
+
         {
           $match: filter
         },
 
         {
           $group: {
-            _id: '$status',
+
+            _id:
+              '$status',
 
             count: {
               $sum: 1
             },
 
             totalAmount: {
-              $sum: '$total_amount'
+              $sum:
+                '$total_amount'
             }
+
           }
         }
+
       ]),
 
+      /**
+       * TOTALS
+       */
       Maintenance.aggregate([
+
         {
           $match: filter
         },
 
         {
           $group: {
+
             _id: null,
 
             totalFlats: {
@@ -599,40 +735,66 @@ exports.getPaymentStats = async (
             },
 
             totalCollected: {
+
               $sum: {
+
                 $cond: [
+
                   {
                     $eq: [
                       '$status',
                       'paid'
                     ]
                   },
+
                   '$total_amount',
+
                   0
+
                 ]
+
               }
+
             },
 
             totalPending: {
+
               $sum: {
+
                 $cond: [
+
                   {
                     $ne: [
                       '$status',
                       'paid'
                     ]
                   },
+
                   '$total_amount',
+
                   0
+
                 ]
+
               }
+
             }
+
           }
         }
+
       ])
+
     ]);
 
+    /**
+     * ========================================================
+     * DEFAULT STATUS DATA
+     * ========================================================
+     */
+
     const statsByStatus = {
+
       paid: {
         count: 0,
         totalAmount: 0
@@ -647,32 +809,53 @@ exports.getPaymentStats = async (
         count: 0,
         totalAmount: 0
       }
+
     };
 
-    stats.forEach(stat => {
+    /**
+     * ========================================================
+     * MAP STATUS DATA
+     * ========================================================
+     */
 
-      if (
-        statsByStatus[
-          stat._id
-        ]
-      ) {
+    stats.forEach(
+      (stat) => {
 
-        statsByStatus[
-          stat._id
-        ] = {
-          count:
-            stat.count,
+        if (
+          statsByStatus[
+            stat._id
+          ]
+        ) {
 
-          totalAmount:
-            stat.totalAmount
-        };
+          statsByStatus[
+            stat._id
+          ] = {
+
+            count:
+              stat.count,
+
+            totalAmount:
+              stat.totalAmount
+
+          };
+
+        }
+
       }
-    });
+    );
+
+    /**
+     * ========================================================
+     * RESPONSE
+     * ========================================================
+     */
 
     return res.status(200).json({
+
       success: true,
 
       data: {
+
         society_id:
           isSuperAdmin
             ? society_id || null
@@ -693,12 +876,19 @@ exports.getPaymentStats = async (
 
         totals:
           totals[0] || {
+
             totalFlats: 0,
+
             totalExpected: 0,
+
             totalCollected: 0,
+
             totalPending: 0
+
           }
+
       }
+
     });
 
   } catch (error) {
@@ -792,6 +982,7 @@ exports.createOrder = async (
         `maint_${maintenance._id}`,
 
       notes: {
+
         maintenance_id:
           maintenance._id.toString(),
 
@@ -809,6 +1000,7 @@ exports.createOrder = async (
 
         user_id:
           req.user._id.toString()
+
       }
     };
 
@@ -823,9 +1015,11 @@ exports.createOrder = async (
     await maintenance.save();
 
     return res.status(200).json({
+
       success: true,
 
       data: {
+
         order_id:
           order.id,
 
@@ -839,6 +1033,7 @@ exports.createOrder = async (
           process.env.RAZORPAY_KEY_ID,
 
         maintenance: {
+
           id:
             maintenance._id,
 
@@ -853,9 +1048,11 @@ exports.createOrder = async (
 
           total_amount:
             maintenance.total_amount
+
         },
 
         prefill: {
+
           name:
             req.user.name,
 
@@ -864,8 +1061,11 @@ exports.createOrder = async (
 
           contact:
             req.user.phone
+
         }
+
       }
+
     });
 
   } catch (error) {
@@ -935,7 +1135,8 @@ exports.generateMonthlyMaintenance =
             ]
           },
 
-          is_active: true
+          is_active:
+            true
 
         }).select(
           '_id flat_no role'
@@ -961,6 +1162,7 @@ exports.generateMonthlyMaintenance =
 
         const exists =
           await Maintenance.findOne({
+
             society_id:
               societyId,
 
@@ -972,6 +1174,7 @@ exports.generateMonthlyMaintenance =
 
             year:
               targetYear
+
           });
 
         if (!exists) {
@@ -1006,6 +1209,7 @@ exports.generateMonthlyMaintenance =
 
               status:
                 'pending'
+
             });
 
             created++;
@@ -1015,14 +1219,20 @@ exports.generateMonthlyMaintenance =
             if (
               error?.code === 11000
             ) {
+
               skipped++;
+
             } else {
+
               throw error;
+
             }
           }
 
         } else {
+
           skipped++;
+
         }
       }
 
@@ -1034,6 +1244,7 @@ exports.generateMonthlyMaintenance =
           `Maintenance records generated: ${created} created, ${skipped} skipped (already exist)`,
 
         data: {
+
           society_id:
             societyId,
 
@@ -1045,7 +1256,9 @@ exports.generateMonthlyMaintenance =
 
           created,
           skipped
+
         }
+
       });
 
     } catch (error) {
@@ -1128,6 +1341,7 @@ exports.triggerMaintenanceGeneration =
 
         data:
           result
+
       });
 
     } catch (error) {
@@ -1167,6 +1381,7 @@ exports.triggerLateFeeApplication =
 
         data:
           result
+
       });
 
     } catch (error) {
@@ -1221,6 +1436,7 @@ exports.triggerPaymentReminders =
 
       const result =
         await sendRemindersByType(
+
           type,
 
           month
@@ -1230,6 +1446,7 @@ exports.triggerPaymentReminders =
           year
             ? parseInt(year)
             : null
+
         );
 
       return res.status(200).json({
@@ -1241,6 +1458,7 @@ exports.triggerPaymentReminders =
 
         data:
           result
+
       });
 
     } catch (error) {
