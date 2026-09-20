@@ -2,47 +2,31 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 /**
- * Authenticate user using JWT
- *
- * Token priority:
- * 1. Authorization: Bearer <token>
- * 2. HTTP-only cookie
- *
- * JWT payload:
- * {
- *   user_id: "<MongoDB User ID>"
- * }
+ * ============================================================
+ * AUTHENTICATE USER
+ * ============================================================
  */
-const authenticate = async (
-  req,
-  res,
-  next
-) => {
+const authenticate = async (req, res, next) => {
   try {
-
     let token = null;
 
     // ==========================================================
-    // FIRST PRIORITY:
-    // AUTHORIZATION HEADER
+    // 1. AUTHORIZATION HEADER
     // ==========================================================
 
-    const authHeader =
-      req.headers.authorization;
+    const authHeader = req.headers.authorization;
 
     if (
       authHeader &&
       authHeader.startsWith('Bearer ')
     ) {
-      token =
-        authHeader
-          .substring(7)
-          .trim();
+      token = authHeader
+        .substring(7)
+        .trim();
     }
 
     // ==========================================================
-    // SECOND PRIORITY:
-    // HTTP-ONLY COOKIE
+    // 2. HTTP-ONLY COOKIE
     // ==========================================================
 
     if (
@@ -50,58 +34,54 @@ const authenticate = async (
       req.cookies &&
       req.cookies.token
     ) {
-      token =
-        req.cookies.token;
+      token = req.cookies.token;
     }
 
     // ==========================================================
-    // TOKEN NOT FOUND
+    // NO TOKEN
     // ==========================================================
 
     if (!token) {
       return res.status(401).json({
         success: false,
-        message:
-          'Access denied. No token provided.'
+        message: 'Access denied. No token provided.'
       });
     }
 
     // ==========================================================
-    // VERIFY JWT
+    // VERIFY TOKEN
     // ==========================================================
 
     let decoded;
 
     try {
-
-      decoded =
-        jwt.verify(
-          token,
-          process.env.JWT_SECRET
-        );
-
+      decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET
+      );
     } catch (error) {
+      console.error(
+        'JWT verification error:',
+        error.message
+      );
 
       if (
-        error.name ===
-        'TokenExpiredError'
+        error.name === 'TokenExpiredError'
       ) {
         return res.status(401).json({
           success: false,
-          message:
-            'Token expired.'
+          message: 'Token expired.'
         });
       }
 
       return res.status(401).json({
         success: false,
-        message:
-          'Invalid token.'
+        message: 'Invalid token.'
       });
     }
 
     // ==========================================================
-    // VALIDATE JWT PAYLOAD
+    // VALIDATE PAYLOAD
     // ==========================================================
 
     if (
@@ -110,8 +90,7 @@ const authenticate = async (
     ) {
       return res.status(401).json({
         success: false,
-        message:
-          'Invalid token.'
+        message: 'Invalid token.'
       });
     }
 
@@ -119,41 +98,30 @@ const authenticate = async (
     // FIND USER
     // ==========================================================
 
-    const user =
-      await User.findById(
-        decoded.user_id
-      ).select(
-        '-password_hash'
-      );
+    const user = await User.findById(
+      decoded.user_id
+    ).select('-password_hash');
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message:
-          'User not found.'
+        message: 'User not found.'
       });
     }
 
     // ==========================================================
-    // CHECK ACTIVE ACCOUNT
+    // CHECK ACTIVE
     // ==========================================================
 
     if (!user.is_active) {
       return res.status(401).json({
         success: false,
-        message:
-          'Account is deactivated.'
+        message: 'Account is deactivated.'
       });
     }
 
     // ==========================================================
     // SOCIETY VALIDATION
-    //
-    // SUPER ADMIN
-    // society_id = null
-    //
-    // MANAGER / ADMIN / RESIDENT / WATCHMAN
-    // society_id must exist
     // ==========================================================
 
     if (
@@ -173,10 +141,25 @@ const authenticate = async (
 
     req.user = user;
 
+    // DEBUG
+    console.log(
+      'Authenticated User:',
+      user.email
+    );
+
+    console.log(
+      'Authenticated Role:',
+      user.role
+    );
+
+    console.log(
+      'Authenticated Society:',
+      user.society_id || 'ALL SOCIETIES'
+    );
+
     next();
 
   } catch (error) {
-
     console.error(
       'Authentication error:',
       error
@@ -188,18 +171,15 @@ const authenticate = async (
 
 
 /**
- * Authorize user based on role
+ * ============================================================
+ * AUTHORIZE USER ROLE
+ * ============================================================
  */
 const authorize = (...roles) => {
-
-  return (
-    req,
-    res,
-    next
-  ) => {
+  return (req, res, next) => {
 
     // ==========================================================
-    // AUTHENTICATION REQUIRED
+    // AUTHENTICATION CHECK
     // ==========================================================
 
     if (!req.user) {
@@ -211,21 +191,68 @@ const authorize = (...roles) => {
     }
 
     // ==========================================================
+    // NORMALIZE USER ROLE
+    // ==========================================================
+
+    const userRole = String(
+      req.user.role || ''
+    )
+      .trim()
+      .toLowerCase();
+
+    // ==========================================================
+    // NORMALIZE ALLOWED ROLES
+    // ==========================================================
+
+    const allowedRoles = roles.map(
+      role =>
+        String(role)
+          .trim()
+          .toLowerCase()
+    );
+
+    // ==========================================================
+    // DEBUG
+    // ==========================================================
+
+    console.log(
+      'Authorization Check:',
+      {
+        user: req.user.email,
+        userRole,
+        allowedRoles
+      }
+    );
+
+    // ==========================================================
     // ROLE CHECK
     // ==========================================================
 
     if (
-      !roles.includes(
-        req.user.role
-      )
+      !allowedRoles.includes(userRole)
     ) {
+      console.log(
+        '❌ ACCESS DENIED'
+      );
 
       return res.status(403).json({
         success: false,
         message:
-          'Access denied. Insufficient permissions.'
+          'Access denied. Insufficient permissions.',
+        debug: {
+          userRole,
+          allowedRoles
+        }
       });
     }
+
+    // ==========================================================
+    // ACCESS GRANTED
+    // ==========================================================
+
+    console.log(
+      '✅ ACCESS GRANTED'
+    );
 
     next();
   };

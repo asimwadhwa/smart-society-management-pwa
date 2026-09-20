@@ -989,7 +989,7 @@ export default function SocietiesPage() {
                       <UserCog className="w-3.5 h-3.5" />
 
                       {society.manager
-                        ? 'Manage Manager'
+                        ? `Manage ${society.manager.name || society.manager.email || 'Manager'}`
                         : 'Add Manager'}
                     </button>
 

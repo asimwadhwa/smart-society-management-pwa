@@ -38,20 +38,20 @@ router.get(
 );
 
 // ============================================================
-// MANAGER / ADMIN
+// MANAGER / ADMIN / SUPER ADMIN
 // ============================================================
 
 // GET /api/maintenance/all
 router.get(
   '/all',
-  authorize('manager', 'admin'),
+  authorize('super_admin', 'manager', 'admin'),
   maintenanceController.getAllMaintenance
 );
 
 // GET /api/maintenance/stats
 router.get(
   '/stats',
-  authorize('manager', 'admin'),
+  authorize('super_admin', 'manager', 'admin'),
   maintenanceController.getPaymentStats
 );
 

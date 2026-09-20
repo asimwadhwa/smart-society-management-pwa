@@ -10,11 +10,10 @@ const getSocietyId = (req) => {
   return req.user?.society_id || null;
 };
 
-
 /**
- * @desc    Get current user's maintenance records
- * @route   GET /api/maintenance
- * @access  Private
+ * ============================================================
+ * GET CURRENT USER MAINTENANCE
+ * ============================================================
  */
 exports.getUserMaintenance = async (req, res, next) => {
   try {
@@ -25,8 +24,7 @@ exports.getUserMaintenance = async (req, res, next) => {
     if (!societyId) {
       return res.status(400).json({
         success: false,
-        message:
-          'User is not assigned to any society'
+        message: 'User is not assigned to any society'
       });
     }
 
@@ -68,11 +66,10 @@ exports.getUserMaintenance = async (req, res, next) => {
   }
 };
 
-
 /**
- * @desc    Get current month's maintenance status
- * @route   GET /api/maintenance/current
- * @access  Private
+ * ============================================================
+ * GET CURRENT MONTH MAINTENANCE
+ * ============================================================
  */
 exports.getCurrentMonthStatus = async (req, res, next) => {
   try {
@@ -81,8 +78,7 @@ exports.getCurrentMonthStatus = async (req, res, next) => {
     if (!societyId) {
       return res.status(400).json({
         success: false,
-        message:
-          'User is not assigned to any society'
+        message: 'User is not assigned to any society'
       });
     }
 
@@ -94,44 +90,78 @@ exports.getCurrentMonthStatus = async (req, res, next) => {
     const currentYear =
       now.getFullYear();
 
+    const userId = req.user._id;
+
     let maintenance =
       await Maintenance.findOne({
         society_id: societyId,
-        user_id: req.user._id,
+        user_id: userId,
         month: currentMonth,
         year: currentYear
       }).lean();
 
     if (!maintenance) {
 
-      const dueDate = new Date(
-        currentYear,
-        currentMonth - 1,
-        18
-      );
-
-      maintenance =
-        await Maintenance.create({
-          society_id: societyId,
-          user_id: req.user._id,
-          flat_no: req.user.flat_no,
-          month: currentMonth,
-          year: currentYear,
-          amount: 1000,
-          late_fee: 0,
-          due_date: dueDate,
-          status: 'pending'
+      if (!req.user.flat_no) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'User does not have a flat number assigned'
         });
+      }
 
-      maintenance =
-        maintenance.toObject();
+      const dueDate =
+        new Date(
+          currentYear,
+          currentMonth - 1,
+          18
+        );
+
+      try {
+
+        const created =
+          await Maintenance.create({
+            society_id: societyId,
+            user_id: userId,
+            flat_no: req.user.flat_no,
+            month: currentMonth,
+            year: currentYear,
+            amount: 1000,
+            late_fee: 0,
+            due_date: dueDate,
+            status: 'pending'
+          });
+
+        maintenance =
+          created.toObject();
+
+      } catch (createError) {
+
+        if (
+          createError?.code === 11000
+        ) {
+
+          maintenance =
+            await Maintenance.findOne({
+              society_id: societyId,
+              user_id: userId,
+              month: currentMonth,
+              year: currentYear
+            }).lean();
+
+        } else {
+          throw createError;
+        }
+      }
     }
 
     return res.status(200).json({
       success: true,
       data: maintenance
     });
+
   } catch (error) {
+
     console.error(
       'Error fetching current month status:',
       error
@@ -141,11 +171,10 @@ exports.getCurrentMonthStatus = async (req, res, next) => {
   }
 };
 
-
 /**
- * @desc    Get payment history
- * @route   GET /api/maintenance/history
- * @access  Private
+ * ============================================================
+ * GET PAYMENT HISTORY
+ * ============================================================
  */
 exports.getPaymentHistory = async (req, res, next) => {
   try {
@@ -154,7 +183,8 @@ exports.getPaymentHistory = async (req, res, next) => {
       limit = 10
     } = req.query;
 
-    const societyId = getSocietyId(req);
+    const societyId =
+      getSocietyId(req);
 
     if (!societyId) {
       return res.status(400).json({
@@ -165,11 +195,17 @@ exports.getPaymentHistory = async (req, res, next) => {
     }
 
     const pageNumber =
-      Math.max(parseInt(page) || 1, 1);
+      Math.max(
+        parseInt(page) || 1,
+        1
+      );
 
     const limitNumber =
       Math.min(
-        Math.max(parseInt(limit) || 10, 1),
+        Math.max(
+          parseInt(limit) || 10,
+          1
+        ),
         100
       );
 
@@ -177,8 +213,6 @@ exports.getPaymentHistory = async (req, res, next) => {
       (pageNumber - 1) *
       limitNumber;
 
-    // PaymentLog must also be linked to the same
-    // user's maintenance/payment records.
     const userMaintenanceIds =
       await Maintenance.find({
         society_id: societyId,
@@ -221,7 +255,9 @@ exports.getPaymentHistory = async (req, res, next) => {
         limit: limitNumber
       }
     });
+
   } catch (error) {
+
     console.error(
       'Error fetching payment history:',
       error
@@ -231,14 +267,25 @@ exports.getPaymentHistory = async (req, res, next) => {
   }
 };
 
-
 /**
- * @desc    Get all flats' maintenance records
- * @route   GET /api/maintenance/all
- * @access  Private (Manager, Admin)
+ * ============================================================
+ * GET ALL MAINTENANCE
+ *
+ * SUPER ADMIN:
+ *   - Can see all societies
+ *   - Can filter by society_id
+ *
+ * MANAGER / ADMIN:
+ *   - Can see only their own society
+ * ============================================================
  */
-exports.getAllMaintenance = async (req, res, next) => {
+exports.getAllMaintenance = async (
+  req,
+  res,
+  next
+) => {
   try {
+
     const {
       page = 1,
       limit = 20,
@@ -246,25 +293,62 @@ exports.getAllMaintenance = async (req, res, next) => {
       month,
       year,
       flat_no,
+      society_id,
       sort = '-createdAt'
     } = req.query;
 
-    const societyId = getSocietyId(req);
+    const isSuperAdmin =
+      req.user?.role === 'super_admin';
 
-    if (!societyId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'User is not assigned to any society'
-      });
+    const ownSocietyId =
+      getSocietyId(req);
+
+    /*
+     * --------------------------------------------------------
+     * SOCIETY FILTER
+     * --------------------------------------------------------
+     */
+
+    const filter = {};
+
+    if (isSuperAdmin) {
+
+      // Super Admin:
+      // If society_id is provided,
+      // show only that society.
+      if (society_id) {
+        filter.society_id =
+          society_id;
+      }
+
+    } else {
+
+      // Manager/Admin:
+      // Always restrict to own society.
+      if (!ownSocietyId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'User is not assigned to any society'
+        });
+      }
+
+      filter.society_id =
+        ownSocietyId;
     }
 
     const pageNumber =
-      Math.max(parseInt(page) || 1, 1);
+      Math.max(
+        parseInt(page) || 1,
+        1
+      );
 
     const limitNumber =
       Math.min(
-        Math.max(parseInt(limit) || 20, 1),
+        Math.max(
+          parseInt(limit) || 20,
+          1
+        ),
         100
       );
 
@@ -272,11 +356,11 @@ exports.getAllMaintenance = async (req, res, next) => {
       (pageNumber - 1) *
       limitNumber;
 
-    // IMPORTANT:
-    // Always filter by current society.
-    const filter = {
-      society_id: societyId
-    };
+    /*
+     * --------------------------------------------------------
+     * STATUS
+     * --------------------------------------------------------
+     */
 
     if (
       status &&
@@ -285,17 +369,44 @@ exports.getAllMaintenance = async (req, res, next) => {
       filter.status = status;
     }
 
+    /*
+     * --------------------------------------------------------
+     * MONTH
+     * --------------------------------------------------------
+     */
+
     if (month) {
-      filter.month = parseInt(month);
+      filter.month =
+        parseInt(month);
     }
+
+    /*
+     * --------------------------------------------------------
+     * YEAR
+     * --------------------------------------------------------
+     */
 
     if (year) {
-      filter.year = parseInt(year);
+      filter.year =
+        parseInt(year);
     }
 
+    /*
+     * --------------------------------------------------------
+     * FLAT
+     * --------------------------------------------------------
+     */
+
     if (flat_no) {
-      filter.flat_no = flat_no;
+      filter.flat_no =
+        flat_no;
     }
+
+    /*
+     * --------------------------------------------------------
+     * SORT
+     * --------------------------------------------------------
+     */
 
     const sortObj = {};
 
@@ -307,14 +418,28 @@ exports.getAllMaintenance = async (req, res, next) => {
       sortObj[sort] = 1;
     }
 
+    /*
+     * --------------------------------------------------------
+     * FETCH
+     * --------------------------------------------------------
+     *
+     * Populate society so Super Admin can see
+     * exactly which society each record belongs to.
+     */
+
     const [
       maintenance,
       total
     ] = await Promise.all([
+
       Maintenance.find(filter)
         .populate(
           'user_id',
           'name email phone flat_no role'
+        )
+        .populate(
+          'society_id',
+          'name society_code city state'
         )
         .sort(sortObj)
         .skip(skip)
@@ -338,7 +463,9 @@ exports.getAllMaintenance = async (req, res, next) => {
         limit: limitNumber
       }
     });
+
   } catch (error) {
+
     console.error(
       'Error fetching all maintenance:',
       error
@@ -348,28 +475,36 @@ exports.getAllMaintenance = async (req, res, next) => {
   }
 };
 
-
 /**
- * @desc    Get payment statistics
- * @route   GET /api/maintenance/stats
- * @access  Private (Manager, Admin)
+ * ============================================================
+ * GET PAYMENT STATISTICS
+ *
+ * SUPER ADMIN:
+ *   - All societies when society_id is not provided
+ *   - One society when society_id is provided
+ *
+ * MANAGER / ADMIN:
+ *   - Own society only
+ * ============================================================
  */
-exports.getPaymentStats = async (req, res, next) => {
+exports.getPaymentStats = async (
+  req,
+  res,
+  next
+) => {
   try {
+
     const {
       month,
-      year
+      year,
+      society_id
     } = req.query;
 
-    const societyId = getSocietyId(req);
+    const isSuperAdmin =
+      req.user?.role === 'super_admin';
 
-    if (!societyId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'User is not assigned to any society'
-      });
-    }
+    const ownSocietyId =
+      getSocietyId(req);
 
     const now = new Date();
 
@@ -383,11 +518,43 @@ exports.getPaymentStats = async (req, res, next) => {
         ? parseInt(year)
         : now.getFullYear();
 
+    /*
+     * --------------------------------------------------------
+     * FILTER
+     * --------------------------------------------------------
+     */
+
     const filter = {
-      society_id: societyId,
       month: targetMonth,
       year: targetYear
     };
+
+    if (isSuperAdmin) {
+
+      if (society_id) {
+        filter.society_id =
+          society_id;
+      }
+
+    } else {
+
+      if (!ownSocietyId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'User is not assigned to any society'
+        });
+      }
+
+      filter.society_id =
+        ownSocietyId;
+    }
+
+    /*
+     * --------------------------------------------------------
+     * AGGREGATE STATUS
+     * --------------------------------------------------------
+     */
 
     const [
       stats,
@@ -402,9 +569,11 @@ exports.getPaymentStats = async (req, res, next) => {
         {
           $group: {
             _id: '$status',
+
             count: {
               $sum: 1
             },
+
             totalAmount: {
               $sum: '$total_amount'
             }
@@ -480,15 +649,20 @@ exports.getPaymentStats = async (req, res, next) => {
       }
     };
 
-    stats.forEach((stat) => {
+    stats.forEach(stat => {
 
       if (
-        statsByStatus[stat._id]
+        statsByStatus[
+          stat._id
+        ]
       ) {
+
         statsByStatus[
           stat._id
         ] = {
-          count: stat.count,
+          count:
+            stat.count,
+
           totalAmount:
             stat.totalAmount
         };
@@ -499,9 +673,20 @@ exports.getPaymentStats = async (req, res, next) => {
       success: true,
 
       data: {
-        society_id: societyId,
-        month: targetMonth,
-        year: targetYear,
+        society_id:
+          isSuperAdmin
+            ? society_id || null
+            : ownSocietyId,
+
+        all_societies:
+          isSuperAdmin &&
+          !society_id,
+
+        month:
+          targetMonth,
+
+        year:
+          targetYear,
 
         byStatus:
           statsByStatus,
@@ -515,7 +700,9 @@ exports.getPaymentStats = async (req, res, next) => {
           }
       }
     });
+
   } catch (error) {
+
     console.error(
       'Error fetching payment stats:',
       error
@@ -525,14 +712,18 @@ exports.getPaymentStats = async (req, res, next) => {
   }
 };
 
-
 /**
- * @desc    Create Razorpay order
- * @route   POST /api/maintenance/create-order
- * @access  Private
+ * ============================================================
+ * CREATE RAZORPAY ORDER
+ * ============================================================
  */
-exports.createOrder = async (req, res, next) => {
+exports.createOrder = async (
+  req,
+  res,
+  next
+) => {
   try {
+
     const {
       maintenance_id
     } = req.body;
@@ -556,8 +747,6 @@ exports.createOrder = async (req, res, next) => {
       });
     }
 
-    // IMPORTANT:
-    // Find maintenance only inside user's society.
     const maintenance =
       await Maintenance.findOne({
         _id: maintenance_id,
@@ -637,21 +826,31 @@ exports.createOrder = async (req, res, next) => {
       success: true,
 
       data: {
-        order_id: order.id,
-        amount: order.amount,
-        currency: order.currency,
+        order_id:
+          order.id,
+
+        amount:
+          order.amount,
+
+        currency:
+          order.currency,
 
         key_id:
           process.env.RAZORPAY_KEY_ID,
 
         maintenance: {
-          id: maintenance._id,
+          id:
+            maintenance._id,
+
           month:
             maintenance.month,
+
           year:
             maintenance.year,
+
           flat_no:
             maintenance.flat_no,
+
           total_amount:
             maintenance.total_amount
         },
@@ -659,14 +858,18 @@ exports.createOrder = async (req, res, next) => {
         prefill: {
           name:
             req.user.name,
+
           email:
             req.user.email,
+
           contact:
             req.user.phone
         }
       }
     });
+
   } catch (error) {
+
     console.error(
       'Error creating Razorpay order:',
       error
@@ -676,152 +879,191 @@ exports.createOrder = async (req, res, next) => {
   }
 };
 
+/**
+ * ============================================================
+ * GENERATE MONTHLY MAINTENANCE
+ * ============================================================
+ */
+exports.generateMonthlyMaintenance =
+  async (
+    req,
+    res,
+    next
+  ) => {
+
+    try {
+
+      const {
+        month,
+        year
+      } = req.body;
+
+      const societyId =
+        getSocietyId(req);
+
+      if (!societyId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'User is not assigned to any society'
+        });
+      }
+
+      const now = new Date();
+
+      const targetMonth =
+        month
+          ? parseInt(month)
+          : now.getMonth() + 1;
+
+      const targetYear =
+        year
+          ? parseInt(year)
+          : now.getFullYear();
+
+      const users =
+        await User.find({
+
+          society_id:
+            societyId,
+
+          role: {
+            $in: [
+              'resident',
+              'admin',
+              'manager'
+            ]
+          },
+
+          is_active: true
+
+        }).select(
+          '_id flat_no role'
+        );
+
+      const dueDate =
+        new Date(
+          targetYear,
+          targetMonth - 1,
+          18
+        );
+
+      let created = 0;
+      let skipped = 0;
+
+      for (
+        const user of users
+      ) {
+
+        if (!user.flat_no) {
+          continue;
+        }
+
+        const exists =
+          await Maintenance.findOne({
+            society_id:
+              societyId,
+
+            user_id:
+              user._id,
+
+            month:
+              targetMonth,
+
+            year:
+              targetYear
+          });
+
+        if (!exists) {
+
+          try {
+
+            await Maintenance.create({
+
+              society_id:
+                societyId,
+
+              user_id:
+                user._id,
+
+              flat_no:
+                user.flat_no,
+
+              month:
+                targetMonth,
+
+              year:
+                targetYear,
+
+              amount:
+                1000,
+
+              late_fee:
+                0,
+
+              due_date:
+                dueDate,
+
+              status:
+                'pending'
+            });
+
+            created++;
+
+          } catch (error) {
+
+            if (
+              error?.code === 11000
+            ) {
+              skipped++;
+            } else {
+              throw error;
+            }
+          }
+
+        } else {
+          skipped++;
+        }
+      }
+
+      return res.status(200).json({
+
+        success: true,
+
+        message:
+          `Maintenance records generated: ${created} created, ${skipped} skipped (already exist)`,
+
+        data: {
+          society_id:
+            societyId,
+
+          month:
+            targetMonth,
+
+          year:
+            targetYear,
+
+          created,
+          skipped
+        }
+      });
+
+    } catch (error) {
+
+      console.error(
+        'Error generating maintenance:',
+        error
+      );
+
+      next(error);
+    }
+  };
 
 /**
- * @desc    Generate maintenance for current society
- * @route   POST /api/maintenance/generate
- * @access  Private (Manager)
+ * ============================================================
+ * CRON JOBS
+ * ============================================================
  */
-exports.generateMonthlyMaintenance = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const {
-      month,
-      year
-    } = req.body;
-
-    const societyId =
-      getSocietyId(req);
-
-    if (!societyId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'User is not assigned to any society'
-      });
-    }
-
-    const now = new Date();
-
-    const targetMonth =
-      month
-        ? parseInt(month)
-        : now.getMonth() + 1;
-
-    const targetYear =
-      year
-        ? parseInt(year)
-        : now.getFullYear();
-
-    // Only active users from current society
-    const users =
-      await User.find({
-        society_id: societyId,
-
-        role: {
-          $in: [
-            'resident',
-            'admin',
-            'manager'
-          ]
-        },
-
-        is_active: true
-      }).select(
-        '_id flat_no'
-      );
-
-    const dueDate =
-      new Date(
-        targetYear,
-        targetMonth - 1,
-        18
-      );
-
-    let created = 0;
-    let skipped = 0;
-
-    for (const user of users) {
-
-      const exists =
-        await Maintenance.findOne({
-          society_id: societyId,
-          user_id: user._id,
-          month: targetMonth,
-          year: targetYear
-        });
-
-      if (!exists) {
-
-        await Maintenance.create({
-          society_id: societyId,
-          user_id: user._id,
-          flat_no: user.flat_no,
-          month: targetMonth,
-          year: targetYear,
-          amount: 1000,
-          late_fee: 0,
-          due_date: dueDate,
-          status: 'pending'
-        });
-
-        created++;
-      } else {
-        skipped++;
-      }
-    }
-
-    return res.status(200).json({
-      success: true,
-
-      message:
-        `Maintenance records generated: ${created} created, ${skipped} skipped (already exist)`,
-
-      data: {
-        society_id:
-          societyId,
-
-        month:
-          targetMonth,
-
-        year:
-          targetYear,
-
-        created,
-        skipped
-      }
-    });
-  } catch (error) {
-    console.error(
-      'Error generating maintenance:',
-      error
-    );
-
-    next(error);
-  }
-};
-
-
-/*
-============================================================
-CRON JOB MANUAL TRIGGERS
-============================================================
-
-NOTE:
-The automatic cron files are still global at this point.
-We will update those separately so that:
-
-Society A → Society A maintenance
-Society B → Society B maintenance
-Society C → Society C maintenance
-
-Do NOT test the cron endpoints until those job files
-are updated.
-============================================================
-*/
 
 const {
   generateMonthlyMaintenance:
@@ -838,147 +1080,176 @@ const {
   sendRemindersByType
 } = require('../jobs/reminderSender');
 
-
 /**
- * @desc    Manually trigger monthly maintenance generation
- * @route   POST /api/maintenance/cron/generate
- * @access  Private (Manager only)
+ * ============================================================
+ * MANUAL MAINTENANCE GENERATION
+ * ============================================================
  */
-exports.triggerMaintenanceGeneration = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const {
-      month,
-      year
-    } = req.body;
+exports.triggerMaintenanceGeneration =
+  async (
+    req,
+    res,
+    next
+  ) => {
 
-    /*
-     * Existing cron job is currently global.
-     * Society-wise cron update will be done next.
-     */
-    let result;
+    try {
 
-    if (month && year) {
-
-      result =
-        await generateMaintenanceForMonth(
-          parseInt(month),
-          parseInt(year)
-        );
-
-    } else {
-
-      result =
-        await generateMonthlyMaintenanceJob();
-    }
-
-    return res.status(200).json({
-      success: true,
-      message:
-        'Maintenance generation completed',
-      data: result
-    });
-  } catch (error) {
-    console.error(
-      'Error triggering maintenance generation:',
-      error
-    );
-
-    next(error);
-  }
-};
-
-
-/**
- * @desc    Manually trigger late fee application
- * @route   POST /api/maintenance/cron/late-fees
- * @access  Private (Manager only)
- */
-exports.triggerLateFeeApplication = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const result =
-      await applyLateFees();
-
-    return res.status(200).json({
-      success: true,
-      message:
-        'Late fee application completed',
-      data: result
-    });
-  } catch (error) {
-    console.error(
-      'Error triggering late fee application:',
-      error
-    );
-
-    next(error);
-  }
-};
-
-
-/**
- * @desc    Manually trigger payment reminders
- * @route   POST /api/maintenance/cron/reminders
- * @access  Private (Manager only)
- */
-exports.triggerPaymentReminders = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const {
-      type = 'reminder',
-      month,
-      year
-    } = req.body;
-
-    const validTypes = [
-      'invoice',
-      'reminder',
-      'final_warning'
-    ];
-
-    if (
-      !validTypes.includes(type)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          `Invalid reminder type. Must be one of: ${validTypes.join(', ')}`
-      });
-    }
-
-    const result =
-      await sendRemindersByType(
-        type,
-        month
-          ? parseInt(month)
-          : null,
+      const {
+        month,
         year
-          ? parseInt(year)
-          : null
+      } = req.body;
+
+      let result;
+
+      if (
+        month &&
+        year
+      ) {
+
+        result =
+          await generateMaintenanceForMonth(
+            parseInt(month),
+            parseInt(year)
+          );
+
+      } else {
+
+        result =
+          await generateMonthlyMaintenanceJob();
+
+      }
+
+      return res.status(200).json({
+
+        success: true,
+
+        message:
+          'Maintenance generation completed',
+
+        data:
+          result
+      });
+
+    } catch (error) {
+
+      console.error(
+        'Error triggering maintenance generation:',
+        error
       );
 
-    return res.status(200).json({
-      success: true,
-      message:
-        `${type} reminders sent`,
-      data: result
-    });
-  } catch (error) {
-    console.error(
-      'Error triggering payment reminders:',
-      error
-    );
+      next(error);
+    }
+  };
 
-    next(error);
-  }
-};
+/**
+ * ============================================================
+ * MANUAL LATE FEE
+ * ============================================================
+ */
+exports.triggerLateFeeApplication =
+  async (
+    req,
+    res,
+    next
+  ) => {
+
+    try {
+
+      const result =
+        await applyLateFees();
+
+      return res.status(200).json({
+
+        success: true,
+
+        message:
+          'Late fee application completed',
+
+        data:
+          result
+      });
+
+    } catch (error) {
+
+      console.error(
+        'Error triggering late fee application:',
+        error
+      );
+
+      next(error);
+    }
+  };
+
+/**
+ * ============================================================
+ * MANUAL REMINDERS
+ * ============================================================
+ */
+exports.triggerPaymentReminders =
+  async (
+    req,
+    res,
+    next
+  ) => {
+
+    try {
+
+      const {
+        type = 'reminder',
+        month,
+        year
+      } = req.body;
+
+      const validTypes = [
+        'invoice',
+        'reminder',
+        'final_warning'
+      ];
+
+      if (
+        !validTypes.includes(type)
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            `Invalid reminder type. Must be one of: ${validTypes.join(', ')}`
+        });
+      }
+
+      const result =
+        await sendRemindersByType(
+          type,
+
+          month
+            ? parseInt(month)
+            : null,
+
+          year
+            ? parseInt(year)
+            : null
+        );
+
+      return res.status(200).json({
+
+        success: true,
+
+        message:
+          `${type} reminders sent`,
+
+        data:
+          result
+      });
+
+    } catch (error) {
+
+      console.error(
+        'Error triggering payment reminders:',
+        error
+      );
+
+      next(error);
+    }
+  };

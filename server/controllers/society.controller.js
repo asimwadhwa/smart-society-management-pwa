@@ -1,5 +1,6 @@
 const Society = require('../models/Society');
 const User = require('../models/User');
+const Maintenance = require('../models/Maintenance');
 const mongoose = require('mongoose');
 
 // ============================================================
@@ -17,6 +18,155 @@ const cleanString = (value) => {
 };
 
 // ============================================================
+// CREATE CURRENT MONTH MAINTENANCE FOR USER
+// ============================================================
+
+const createCurrentMonthMaintenance = async (
+  user,
+  societyId
+) => {
+  try {
+    if (!user || !user._id) {
+      return null;
+    }
+
+    if (!societyId) {
+      return null;
+    }
+
+    if (!user.flat_no) {
+      console.log(
+        `⚠️ Maintenance skipped for ${user.name}: flat number missing`
+      );
+
+      return null;
+    }
+
+    const now = new Date();
+
+    const month =
+      now.getMonth() + 1;
+
+    const year =
+      now.getFullYear();
+
+    // --------------------------------------------------------
+    // Check if maintenance already exists
+    // --------------------------------------------------------
+
+    const existing =
+      await Maintenance.findOne({
+        society_id: societyId,
+        user_id: user._id,
+        month,
+        year
+      });
+
+    if (existing) {
+      console.log(
+        `ℹ️ Maintenance already exists for ${user.name} - ${month}/${year}`
+      );
+
+      return existing;
+    }
+
+    // --------------------------------------------------------
+    // Due date
+    // --------------------------------------------------------
+
+    const dueDate =
+      new Date(
+        year,
+        month - 1,
+        18
+      );
+
+    // --------------------------------------------------------
+    // Create maintenance
+    // --------------------------------------------------------
+
+    const maintenance =
+      await Maintenance.create({
+        society_id: societyId,
+
+        user_id: user._id,
+
+        flat_no:
+          user.flat_no,
+
+        month,
+
+        year,
+
+        amount: 1000,
+
+        late_fee: 0,
+
+        total_amount: 1000,
+
+        due_date:
+          dueDate,
+
+        paid_date: null,
+
+        status: 'pending',
+
+        razorpay_payment_id:
+          null,
+
+        razorpay_order_id:
+          null
+      });
+
+    console.log(
+      `✅ Current month maintenance created for ${user.name} - ${month}/${year}`
+    );
+
+    return maintenance;
+
+  } catch (error) {
+
+    /*
+     * If another request created the same record
+     * at the same time, don't fail manager creation.
+     */
+    if (
+      error.code === 11000
+    ) {
+
+      console.log(
+        `ℹ️ Maintenance already exists for user ${user._id}`
+      );
+
+      return await Maintenance.findOne({
+        society_id:
+          societyId,
+
+        user_id:
+          user._id,
+
+        month:
+          new Date().getMonth() + 1,
+
+        year:
+          new Date().getFullYear()
+      });
+    }
+
+    console.error(
+      'Error creating current month maintenance:',
+      error
+    );
+
+    /*
+     * Manager creation should not fail only because
+     * maintenance creation failed.
+     */
+    return null;
+  }
+};
+
+// ============================================================
 // CREATE SOCIETY
 // POST /api/societies
 // ============================================================
@@ -27,6 +177,7 @@ exports.createSociety = async (
   next
 ) => {
   try {
+
     const {
       name,
       society_code,
@@ -113,21 +264,34 @@ exports.createSociety = async (
 
     const society =
       await Society.create({
-        name: cleanName,
-        society_code: cleanCode,
-        address: cleanAddress,
-        city: cleanCity,
-        state: cleanState,
+        name:
+          cleanName,
+
+        society_code:
+          cleanCode,
+
+        address:
+          cleanAddress,
+
+        city:
+          cleanCity,
+
+        state:
+          cleanState,
+
         contact_number:
           cleanContact,
-        is_active: true
+
+        is_active:
+          true
       });
 
     return res.status(201).json({
       success: true,
       message:
         'Society created successfully',
-      data: society
+      data:
+        society
     });
 
   } catch (error) {
@@ -157,17 +321,20 @@ exports.getAllSocieties =
     res,
     next
   ) => {
+
     try {
 
       const societies =
         await Society.find()
           .sort({
-            created_at: -1
+            created_at:
+              -1
           });
 
       return res.status(200).json({
         success: true,
-        data: societies
+        data:
+          societies
       });
 
     } catch (error) {
@@ -186,6 +353,7 @@ exports.getSocietyById =
     res,
     next
   ) => {
+
     try {
 
       if (
@@ -215,7 +383,8 @@ exports.getSocietyById =
 
       return res.status(200).json({
         success: true,
-        data: society
+        data:
+          society
       });
 
     } catch (error) {
@@ -234,6 +403,7 @@ exports.updateSociety =
     res,
     next
   ) => {
+
     try {
 
       if (
@@ -274,6 +444,7 @@ exports.updateSociety =
       if (
         name !== undefined
       ) {
+
         const value =
           cleanString(name);
 
@@ -285,12 +456,15 @@ exports.updateSociety =
           });
         }
 
-        society.name = value;
+        society.name =
+          value;
       }
 
       if (
-        society_code !== undefined
+        society_code !==
+        undefined
       ) {
+
         const value =
           cleanString(
             society_code
@@ -333,6 +507,7 @@ exports.updateSociety =
         contact_number !==
         undefined
       ) {
+
         const value =
           cleanString(
             contact_number
@@ -355,13 +530,15 @@ exports.updateSociety =
       }
 
       if (
-        is_active !== undefined
+        is_active !==
+        undefined
       ) {
 
         if (
           typeof is_active ===
           'boolean'
         ) {
+
           society.is_active =
             is_active;
 
@@ -371,6 +548,7 @@ exports.updateSociety =
           ).toLowerCase() ===
           'true'
         ) {
+
           society.is_active =
             true;
 
@@ -380,6 +558,7 @@ exports.updateSociety =
           ).toLowerCase() ===
           'false'
         ) {
+
           society.is_active =
             false;
         }
@@ -391,13 +570,15 @@ exports.updateSociety =
         success: true,
         message:
           'Society updated successfully',
-        data: society
+        data:
+          society
       });
 
     } catch (error) {
 
       if (
-        error.code === 11000
+        error.code ===
+        11000
       ) {
         return res.status(400).json({
           success: false,
@@ -421,6 +602,7 @@ exports.deactivateSociety =
     res,
     next
   ) => {
+
     try {
 
       if (
@@ -457,7 +639,8 @@ exports.deactivateSociety =
         success: true,
         message:
           'Society deactivated successfully',
-        data: society
+        data:
+          society
       });
 
     } catch (error) {
@@ -476,6 +659,7 @@ exports.activateSociety =
     res,
     next
   ) => {
+
     try {
 
       if (
@@ -512,7 +696,8 @@ exports.activateSociety =
         success: true,
         message:
           'Society activated successfully',
-        data: society
+        data:
+          society
       });
 
     } catch (error) {
@@ -531,6 +716,7 @@ exports.getSocietyStats =
     res,
     next
   ) => {
+
     try {
 
       const societyId =
@@ -625,12 +811,17 @@ exports.getSocietyStats =
         data: {
 
           totalUsers,
+
           activeUsers,
+
           inactiveUsers,
 
           managers,
+
           admins,
+
           residents,
+
           watchmen,
 
           society: {
@@ -690,6 +881,7 @@ exports.getSocietyManager =
     res,
     next
   ) => {
+
     try {
 
       const societyId =
@@ -733,8 +925,10 @@ exports.getSocietyManager =
 
       return res.status(200).json({
         success: true,
+
         data:
           manager || null,
+
         hasManager:
           !!manager
       });
@@ -748,24 +942,6 @@ exports.getSocietyManager =
 // ASSIGN / REPLACE MANAGER
 //
 // PUT /api/societies/:id/manager
-//
-// Existing user:
-// {
-//   user_id: "USER_ID"
-// }
-//
-// New manager:
-// {
-//   name,
-//   email,
-//   password,
-//   phone,
-//   flat_no
-// }
-//
-// If old manager exists:
-// old manager -> resident + inactive
-//
 // ============================================================
 
 exports.assignOrReplaceManager =
@@ -774,6 +950,7 @@ exports.assignOrReplaceManager =
     res,
     next
   ) => {
+
     try {
 
       const societyId =
@@ -885,7 +1062,10 @@ exports.assignOrReplaceManager =
           });
         }
 
-        // New manager
+        // ------------------------------------------------------
+        // Promote existing user
+        // ------------------------------------------------------
+
         newManager.role =
           'manager';
 
@@ -894,10 +1074,24 @@ exports.assignOrReplaceManager =
 
         await newManager.save();
 
-        // Old manager
+        // ------------------------------------------------------
+        // IMPORTANT:
+        // Create current month's maintenance immediately
+        // ------------------------------------------------------
+
+        await createCurrentMonthMaintenance(
+          newManager,
+          societyId
+        );
+
+        // ------------------------------------------------------
+        // Retire old manager
+        // ------------------------------------------------------
+
         if (
           currentManager
         ) {
+
           currentManager.role =
             'resident';
 
@@ -908,6 +1102,7 @@ exports.assignOrReplaceManager =
         }
 
         return res.status(200).json({
+
           success: true,
 
           message:
@@ -924,6 +1119,7 @@ exports.assignOrReplaceManager =
                 : null,
 
             society: {
+
               _id:
                 society._id,
 
@@ -1027,7 +1223,10 @@ exports.assignOrReplaceManager =
         });
       }
 
-      // Email globally unique
+      // ========================================================
+      // EMAIL UNIQUE
+      // ========================================================
+
       const existingEmail =
         await User.findOne({
           email:
@@ -1044,9 +1243,13 @@ exports.assignOrReplaceManager =
         });
       }
 
-      // Flat only inside this society
+      // ========================================================
+      // FLAT UNIQUE WITHIN SOCIETY
+      // ========================================================
+
       const existingFlat =
         await User.findOne({
+
           society_id:
             societyId,
 
@@ -1067,7 +1270,10 @@ exports.assignOrReplaceManager =
         });
       }
 
-      // Create new manager
+      // ========================================================
+      // CREATE NEW MANAGER
+      // ========================================================
+
       const manager =
         await User.create({
 
@@ -1099,8 +1305,20 @@ exports.assignOrReplaceManager =
             true
         });
 
-      // Retire old manager AFTER
-      // new manager is successfully created
+      // ========================================================
+      // IMPORTANT:
+      // CREATE CURRENT MONTH MAINTENANCE IMMEDIATELY
+      // ========================================================
+
+      await createCurrentMonthMaintenance(
+        manager,
+        societyId
+      );
+
+      // ========================================================
+      // RETIRE OLD MANAGER
+      // ========================================================
+
       if (
         currentManager
       ) {
@@ -1162,8 +1380,11 @@ exports.assignOrReplaceManager =
         error.name ===
         'ValidationError'
       ) {
+
         return res.status(400).json({
+
           success: false,
+
           message:
             Object.values(
               error.errors
@@ -1180,8 +1401,11 @@ exports.assignOrReplaceManager =
         error.code ===
         11000
       ) {
+
         return res.status(400).json({
+
           success: false,
+
           message:
             'Duplicate data already exists'
         });
@@ -1195,13 +1419,6 @@ exports.assignOrReplaceManager =
 // REMOVE MANAGER
 //
 // DELETE /api/societies/:id/manager
-//
-// Manager is NOT deleted.
-//
-// manager -> resident
-// manager -> inactive
-//
-// This preserves old manager history.
 // ============================================================
 
 exports.removeSocietyManager =
@@ -1210,6 +1427,7 @@ exports.removeSocietyManager =
     res,
     next
   ) => {
+
     try {
 
       const societyId =
@@ -1266,6 +1484,7 @@ exports.removeSocietyManager =
       await manager.save();
 
       return res.status(200).json({
+
         success: true,
 
         message:
