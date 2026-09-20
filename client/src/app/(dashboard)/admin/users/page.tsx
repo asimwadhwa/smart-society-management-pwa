@@ -97,6 +97,15 @@ interface UserData {
 }
 
 
+interface SocietyData {
+  _id: string;
+  name: string;
+  society_code: string;
+  city?: string;
+  state?: string;
+  is_active?: boolean;
+}
+
 interface Pagination {
   current: number;
   pages: number;
@@ -133,6 +142,12 @@ export default function AdminUsersPage() {
     useState<string>('all');
 
   const [statusFilter, setStatusFilter] =
+    useState<string>('all');
+
+  const [societies, setSocieties] =
+    useState<SocietyData[]>([]);
+
+  const [selectedSociety, setSelectedSociety] =
     useState<string>('all');
 
 
@@ -199,6 +214,45 @@ export default function AdminUsersPage() {
     isSuperAdmin;
 
 
+  const fetchSocieties = useCallback(
+    async () => {
+
+      if (!isSuperAdmin) {
+        return;
+      }
+
+      try {
+
+        const response =
+          await api.get('/societies');
+
+        const apiSocieties =
+          Array.isArray(response.data?.data)
+            ? response.data.data
+            : [];
+
+        setSocieties(apiSocieties);
+
+      } catch (error) {
+
+        console.error(
+          'Failed to fetch societies:',
+          error
+        );
+
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch societies',
+          variant: 'destructive'
+        });
+
+      }
+
+    },
+    [isSuperAdmin, toast]
+  );
+
+
   const fetchUsers = useCallback(
     async () => {
 
@@ -208,6 +262,19 @@ export default function AdminUsersPage() {
 
         const params =
           new URLSearchParams();
+
+
+        if (
+          isSuperAdmin &&
+          selectedSociety !== 'all'
+        ) {
+
+          params.append(
+            'society_id',
+            selectedSociety
+          );
+
+        }
 
 
         if (
@@ -234,6 +301,12 @@ export default function AdminUsersPage() {
           );
 
         }
+
+
+        params.append(
+          'limit',
+          '100'
+        );
 
 
         const response =
@@ -321,11 +394,25 @@ export default function AdminUsersPage() {
 
     },
     [
+      isSuperAdmin,
+      selectedSociety,
       roleFilter,
       statusFilter,
       toast
     ]
   );
+
+
+  useEffect(() => {
+
+    if (isSuperAdmin) {
+      fetchSocieties();
+    }
+
+  }, [
+    isSuperAdmin,
+    fetchSocieties
+  ]);
 
 
   useEffect(() => {
@@ -1438,14 +1525,50 @@ export default function AdminUsersPage() {
             <div
               className="
                 grid
-                grid-cols-2
+                grid-cols-1
+                sm:grid-cols-3
                 gap-2
-                sm:flex
-                sm:gap-2
                 w-full
                 lg:w-auto
               "
             >
+
+              {isSuperAdmin && (
+
+                <Select
+                  value={selectedSociety}
+                  onValueChange={setSelectedSociety}
+                >
+
+                  <SelectTrigger
+                    className="
+                      w-full
+                      sm:w-[190px]
+                    "
+                  >
+                    <SelectValue placeholder="Society" />
+                  </SelectTrigger>
+
+                  <SelectContent>
+
+                    <SelectItem value="all">
+                      All Societies
+                    </SelectItem>
+
+                    {societies.map((society) => (
+                      <SelectItem
+                        key={society._id}
+                        value={society._id}
+                      >
+                        {society.name} ({society.society_code})
+                      </SelectItem>
+                    ))}
+
+                  </SelectContent>
+
+                </Select>
+
+              )}
 
               <Select
                 value={roleFilter}
