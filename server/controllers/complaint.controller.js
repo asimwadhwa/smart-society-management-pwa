@@ -20,11 +20,9 @@ const getSocietyId = (req) => {
   return req.user?.society_id || null;
 };
 
-
 const isSuperAdmin = (req) => {
   return req.user?.role === 'super_admin';
 };
-
 
 const isAdminOrManager = (req) => {
   return [
@@ -34,7 +32,6 @@ const isAdminOrManager = (req) => {
     req.user?.role
   );
 };
-
 
 const isValidObjectId = (id) => {
   return mongoose.Types.ObjectId.isValid(id);
@@ -58,14 +55,11 @@ exports.createComplaint = async (
       image_url
     } = req.body;
 
-
     const user =
       req.user;
 
-
     const societyId =
       getSocietyId(req);
-
 
     if (!societyId) {
 
@@ -78,7 +72,6 @@ exports.createComplaint = async (
 
       });
     }
-
 
     if (
       !description ||
@@ -95,7 +88,6 @@ exports.createComplaint = async (
       });
     }
 
-
     if (
       description.length > 1000
     ) {
@@ -109,7 +101,6 @@ exports.createComplaint = async (
 
       });
     }
-
 
     const complaint =
       await Complaint.create({
@@ -134,12 +125,15 @@ exports.createComplaint = async (
 
       });
 
-
     await complaint.populate(
       'user_id',
       'name email flat_no phone'
     );
 
+    await complaint.populate(
+      'society_id',
+      'name society_code city state'
+    );
 
     return res.status(201).json({
 
@@ -180,17 +174,14 @@ exports.getUserComplaints = async (
     const user =
       req.user;
 
-
     const {
       page = 1,
       limit = 10,
       status
     } = req.query;
 
-
     const societyId =
       getSocietyId(req);
-
 
     if (!societyId) {
 
@@ -204,13 +195,11 @@ exports.getUserComplaints = async (
       });
     }
 
-
     const pageNumber =
       Math.max(
         parseInt(page) || 1,
         1
       );
-
 
     const limitNumber =
       Math.min(
@@ -221,7 +210,6 @@ exports.getUserComplaints = async (
         100
       );
 
-
     const query = {
 
       society_id:
@@ -231,7 +219,6 @@ exports.getUserComplaints = async (
         user._id
 
     };
-
 
     if (
       status &&
@@ -247,39 +234,42 @@ exports.getUserComplaints = async (
 
     }
 
-
     const total =
       await Complaint.countDocuments(
         query
       );
 
-
     const complaints =
       await Complaint.find(query)
+
         .populate(
           'user_id',
           'name email flat_no'
         )
+
         .populate(
           'resolved_by',
           'name email'
         )
+
         .populate(
           'society_id',
           'name society_code'
         )
+
         .sort({
           created_at:
             -1
         })
+
         .skip(
           (pageNumber - 1) *
             limitNumber
         )
+
         .limit(
           limitNumber
         );
-
 
     return res.status(200).json({
 
@@ -325,6 +315,7 @@ exports.getUserComplaints = async (
 //
 // SUPER ADMIN
 // -> ALL SOCIETIES
+// -> Can filter by society_id
 //
 // MANAGER / ADMIN
 // -> OWN SOCIETY
@@ -348,13 +339,11 @@ exports.getAllComplaints = async (
       order = 'desc'
     } = req.query;
 
-
     const pageNumber =
       Math.max(
         parseInt(page) || 1,
         1
       );
-
 
     const limitNumber =
       Math.min(
@@ -365,12 +354,14 @@ exports.getAllComplaints = async (
         100
       );
 
+    // ========================================================
+    // QUERY FOR MONGOOSE
+    // ========================================================
 
     const query = {};
 
-
     // ========================================================
-    // SUPER ADMIN
+    // SOCIETY FILTER
     // ========================================================
 
     if (isSuperAdmin(req)) {
@@ -393,22 +384,24 @@ exports.getAllComplaints = async (
           });
         }
 
+        /*
+         * IMPORTANT:
+         * Convert society_id string into MongoDB ObjectId.
+         *
+         * Complaint.society_id is stored as ObjectId.
+         */
 
         query.society_id =
-          society_id;
+          new mongoose.Types.ObjectId(
+            society_id
+          );
+
       }
 
-    }
-
-    // ========================================================
-    // MANAGER / ADMIN
-    // ========================================================
-
-    else {
+    } else {
 
       const currentSociety =
         getSocietyId(req);
-
 
       if (!currentSociety) {
 
@@ -422,14 +415,13 @@ exports.getAllComplaints = async (
         });
       }
 
-
       query.society_id =
         currentSociety;
     }
 
 
     // ========================================================
-    // FILTERS
+    // STATUS FILTER
     // ========================================================
 
     if (
@@ -447,6 +439,10 @@ exports.getAllComplaints = async (
     }
 
 
+    // ========================================================
+    // FLAT FILTER
+    // ========================================================
+
     if (flat_no) {
 
       query.flat_no =
@@ -455,17 +451,24 @@ exports.getAllComplaints = async (
     }
 
 
+    // ========================================================
+    // TOTAL COUNT
+    // ========================================================
+
     const total =
       await Complaint.countDocuments(
         query
       );
 
 
+    // ========================================================
+    // SORT
+    // ========================================================
+
     const sortOrder =
       order === 'asc'
         ? 1
         : -1;
-
 
     const allowedSortFields = [
       'created_at',
@@ -474,14 +477,12 @@ exports.getAllComplaints = async (
       'flat_no'
     ];
 
-
     const safeSortBy =
       allowedSortFields.includes(
         sortBy
       )
         ? sortBy
         : 'created_at';
-
 
     const sort = {
 
@@ -491,32 +492,49 @@ exports.getAllComplaints = async (
     };
 
 
+    // ========================================================
+    // FETCH COMPLAINTS
+    // ========================================================
+
     const complaints =
       await Complaint.find(query)
+
         .populate(
           'user_id',
           'name email flat_no phone role'
         )
+
         .populate(
           'resolved_by',
           'name email'
         )
+
         .populate(
           'society_id',
           'name society_code city state'
         )
+
         .sort(sort)
+
         .skip(
           (pageNumber - 1) *
             limitNumber
         )
+
         .limit(
           limitNumber
         );
 
 
     // ========================================================
-    // STATS
+    // SOCIETY-WISE STATUS STATS
+    // ========================================================
+    //
+    // IMPORTANT:
+    // query.society_id is already converted to ObjectId
+    // for Super Admin society filtering.
+    //
+    // Therefore aggregate() now matches correctly.
     // ========================================================
 
     const stats =
@@ -544,6 +562,10 @@ exports.getAllComplaints = async (
       ]);
 
 
+    // ========================================================
+    // DEFAULT STATS
+    // ========================================================
+
     const statsMap = {
 
       open: 0,
@@ -554,6 +576,10 @@ exports.getAllComplaints = async (
 
     };
 
+
+    // ========================================================
+    // MAP AGGREGATION RESULT
+    // ========================================================
 
     stats.forEach(
       (item) => {
@@ -574,6 +600,20 @@ exports.getAllComplaints = async (
     );
 
 
+    // ========================================================
+    // TOTAL COMPLAINTS
+    // ========================================================
+
+    const totalComplaints =
+      statsMap.open +
+      statsMap['in-progress'] +
+      statsMap.resolved;
+
+
+    // ========================================================
+    // RESPONSE
+    // ========================================================
+
     return res.status(200).json({
 
       success: true,
@@ -581,8 +621,33 @@ exports.getAllComplaints = async (
       data:
         complaints,
 
-      stats:
-        statsMap,
+      stats: {
+
+        open:
+          statsMap.open,
+
+        'in-progress':
+          statsMap['in-progress'],
+
+        resolved:
+          statsMap.resolved,
+
+        total:
+          totalComplaints
+
+      },
+
+      // Selected society
+      society_id:
+        isSuperAdmin(req)
+          ? society_id || null
+          : getSocietyId(req),
+
+      // True when Super Admin selected
+      // "All Societies"
+      all_societies:
+        isSuperAdmin(req) &&
+        !society_id,
 
       pagination: {
 
@@ -632,10 +697,8 @@ exports.getComplaintById = async (
       id
     } = req.params;
 
-
     const user =
       req.user;
-
 
     if (
       !isValidObjectId(id)
@@ -651,12 +714,12 @@ exports.getComplaintById = async (
       });
     }
 
-
     const query = {
+
       _id:
         id
-    };
 
+    };
 
     if (
       !isSuperAdmin(req)
@@ -664,7 +727,6 @@ exports.getComplaintById = async (
 
       const societyId =
         getSocietyId(req);
-
 
       if (!societyId) {
 
@@ -678,25 +740,26 @@ exports.getComplaintById = async (
         });
       }
 
-
       query.society_id =
         societyId;
 
     }
 
-
     const complaint =
       await Complaint.findOne(
         query
       )
+
         .populate(
           'user_id',
           'name email flat_no phone'
         )
+
         .populate(
           'resolved_by',
           'name email'
         )
+
         .populate(
           'society_id',
           'name society_code city state'
@@ -740,6 +803,7 @@ exports.getComplaintById = async (
           'Not authorized to view this complaint'
 
       });
+
     }
 
 
@@ -786,16 +850,13 @@ exports.updateComplaintStatus = async (
       id
     } = req.params;
 
-
     const {
       status,
       admin_notes
     } = req.body;
 
-
     const user =
       req.user;
-
 
     const validStatuses = [
 
@@ -920,6 +981,11 @@ exports.updateComplaintStatus = async (
 
       complaint.resolved_by =
         user._id;
+
+    } else {
+
+      complaint.resolved_by =
+        null;
 
     }
 
