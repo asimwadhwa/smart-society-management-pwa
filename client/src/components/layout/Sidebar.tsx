@@ -109,6 +109,11 @@ const superAdminItems: NavItem[] = [
     icon: <LayoutDashboard className="w-5 h-5" />,
   },
   {
+    href: '/admin/societies',
+    label: 'Societies',
+    icon: <Building2 className="w-5 h-5" />,
+  },
+  {
     href: '/admin/users',
     label: 'Manage Users',
     icon: <Users className="w-5 h-5" />,
@@ -412,7 +417,7 @@ export default function Sidebar() {
               {superAdminItems.map(
                 (item) => (
 
-                  <a
+                  <Link
                     key={`${item.href}-${item.label}`}
                     href={item.href}
                     className={cn(
@@ -449,7 +454,7 @@ export default function Sidebar() {
                       {item.label}
                     </span>
 
-                  </a>
+                  </Link>
 
                 )
               )}
@@ -729,7 +734,7 @@ export default function Sidebar() {
           ).map(
             (item) => (
 
-              <a
+              <Link
                 key={`${item.href}-${item.label}`}
                 href={item.href}
                 className={cn(
@@ -779,7 +784,7 @@ export default function Sidebar() {
                   {item.label}
                 </span>
 
-              </a>
+              </Link>
 
             )
           )}
