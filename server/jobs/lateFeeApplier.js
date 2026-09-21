@@ -1,320 +1,405 @@
-const Maintenance = require('../models/Maintenance');
-const emailService = require('../services/email.service');
+const mongoose = require('mongoose');
 
-/**
- * ============================================================
- * APPLY LATE FEES TO OVERDUE PAYMENTS
- * ============================================================
- *
- * Runs daily at midnight.
- *
- * IMPORTANT:
- * Manager does NOT have personal maintenance.
- *
- * Therefore this job only processes maintenance
- * belonging to:
- * - resident
- * - admin
- *
- * Old/incorrect manager maintenance records are
- * ignored and will not receive late fees.
- */
-const applyLateFees = async () => {
+const Maintenance = require('../models/Maintenance');
+const User = require('../models/User');
+const Society = require('../models/Society');
+
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+const isValidObjectId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
+
+
+// ============================================================
+// APPLY LATE FEES
+//
+// societyId optional:
+//
+// societyId provided  -> only that society
+// societyId omitted   -> all active societies
+//
+// Late fee comes from Society settings.
+// NO hardcoded ₹100.
+// ============================================================
+
+const applyLateFees = async (
+  societyId = null
+) => {
+
   try {
+
     const now = new Date();
 
-    console.log(
-      `💰 Checking overdue payments across all societies...`
-    );
+    // --------------------------------------------------------
+    // SOCIETY FILTER
+    // --------------------------------------------------------
 
-    /*
-     * ==========================================================
-     * FIND OVERDUE MAINTENANCE
-     * ==========================================================
-     *
-     * We populate user_id so that we can check
-     * the user's current role.
-     *
-     * Only resident/admin records will be processed.
-     */
-    const overdueRecords =
+    const societyFilter = {
+      is_active: true
+    };
+
+    if (societyId) {
+
+      if (!isValidObjectId(societyId)) {
+        return {
+          success: false,
+          message: 'Invalid society ID.'
+        };
+      }
+
+      societyFilter._id = societyId;
+    }
+
+    const societies =
+      await Society.find(
+        societyFilter
+      ).select(
+        '_id name society_code maintenance_late_fee'
+      );
+
+    if (societies.length === 0) {
+      return {
+        success: true,
+        message: 'No active societies found.',
+        societies_processed: 0,
+        updated: 0,
+        skipped: 0
+      };
+    }
+
+    const societyMap = new Map();
+
+    societies.forEach((society) => {
+
+      societyMap.set(
+        society._id.toString(),
+        society
+      );
+
+    });
+
+
+    // --------------------------------------------------------
+    // GET PENDING MAINTENANCE
+    //
+    // Manager records are excluded later.
+    // --------------------------------------------------------
+
+    const societyIds =
+      societies.map(
+        society => society._id
+      );
+
+    const maintenanceRecords =
       await Maintenance.find({
+        society_id: {
+          $in: societyIds
+        },
+
         status: 'pending',
 
         due_date: {
           $lt: now
-        },
-
-        late_fee: 0,
-
-        society_id: {
-          $exists: true,
-          $ne: null
         }
       }).populate(
         'user_id',
-        'name email role is_active'
+        'name email flat_no role is_active'
       );
 
-    console.log(
-      `Found ${overdueRecords.length} overdue maintenance records`
-    );
+
+    if (maintenanceRecords.length === 0) {
+
+      return {
+        success: true,
+        message:
+          'No pending maintenance records require late fees.',
+        societies_processed:
+          societies.length,
+        records_checked: 0,
+        updated: 0,
+        skipped: 0
+      };
+    }
+
 
     let updated = 0;
-    let skippedManagers = 0;
-    let errors = 0;
+    let skipped = 0;
 
-    const societyStats = {};
+    const updatedRecords = [];
 
-    /*
-     * ==========================================================
-     * PROCESS EACH RECORD
-     * ==========================================================
-     */
+
+    // ========================================================
+    // APPLY LATE FEE
+    // ========================================================
+
     for (
-      const record of overdueRecords
+      const maintenance
+      of maintenanceRecords
     ) {
+
+      // ------------------------------------------------------
+      // USER CHECK
+      // ------------------------------------------------------
+
+      const user =
+        maintenance.user_id;
+
+      if (!user) {
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // MANAGER SHOULD NEVER HAVE PERSONAL MAINTENANCE
+      // ------------------------------------------------------
+
+      if (
+        user.role === 'manager'
+      ) {
+
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // ONLY RESIDENT / ADMIN
+      // ------------------------------------------------------
+
+      if (
+        ![
+          'resident',
+          'admin'
+        ].includes(user.role)
+      ) {
+
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // SOCIETY
+      // ------------------------------------------------------
+
+      const society =
+        societyMap.get(
+          maintenance.society_id.toString()
+        );
+
+      if (!society) {
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // GET LATE FEE FROM SOCIETY SETTINGS
+      // ------------------------------------------------------
+
+      let lateFee =
+        society.maintenance_late_fee;
+
+
+      if (
+        lateFee === null ||
+        lateFee === undefined ||
+        lateFee === ''
+      ) {
+        lateFee = 0;
+      }
+
+
+      lateFee =
+        Number(lateFee);
+
+
+      if (
+        !Number.isFinite(lateFee) ||
+        lateFee < 0
+      ) {
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // APPLY LATE FEE
+      // ------------------------------------------------------
+
+      maintenance.late_fee =
+        lateFee;
+
+
+      maintenance.total_amount =
+        Number(
+          maintenance.amount || 0
+        ) +
+        lateFee;
+
+
+      maintenance.status =
+        'overdue';
+
+
+      await maintenance.save();
+
+
+      updated++;
+
+
+      updatedRecords.push({
+        maintenance_id:
+          maintenance._id,
+
+        society_id:
+          society._id,
+
+        society_name:
+          society.name,
+
+        user_id:
+          user._id,
+
+        name:
+          user.name,
+
+        email:
+          user.email,
+
+        flat_no:
+          user.flat_no,
+
+        amount:
+          maintenance.amount,
+
+        late_fee:
+          maintenance.late_fee,
+
+        total_amount:
+          maintenance.total_amount,
+
+        status:
+          maintenance.status
+      });
+
+
+      // ------------------------------------------------------
+      // EMAIL
+      // ------------------------------------------------------
+      //
+      // Keep email sending independent from database update.
+      // ------------------------------------------------------
 
       try {
 
-        /*
-         * ======================================================
-         * MANAGER CHECK
-         * ======================================================
-         *
-         * If an old Manager maintenance record exists,
-         * do NOT apply late fee.
-         */
-        if (
-          record.user_id &&
-          record.user_id.role ===
-            'manager'
-        ) {
-
-          skippedManagers++;
-
-          console.log(
-            `⏭️ Skipping manager maintenance - Society: ${record.society_id}, Flat: ${record.flat_no}`
-          );
-
-          continue;
-        }
-
-        /*
-         * Only resident/admin should continue.
-         */
-        if (
-          record.user_id &&
-          ![
-            'resident',
-            'admin'
-          ].includes(
-            record.user_id.role
-          )
-        ) {
-
-          skippedManagers++;
-
-          console.log(
-            `⏭️ Skipping maintenance for role ${record.user_id.role} - Flat: ${record.flat_no}`
-          );
-
-          continue;
-        }
-
-        /*
-         * ======================================================
-         * APPLY LATE FEE
-         * ======================================================
-         */
-        record.late_fee = 100;
-
-        record.total_amount =
-          record.amount +
-          record.late_fee;
-
-        record.status =
-          'overdue';
-
-        await record.save();
-
-        updated++;
-
-        /*
-         * ======================================================
-         * SOCIETY STATISTICS
-         * ======================================================
-         */
-        const societyKey =
-          record.society_id.toString();
-
-        if (
-          !societyStats[societyKey]
-        ) {
-          societyStats[societyKey] = {
-            updated: 0,
-            skippedManagers: 0,
-            errors: 0
-          };
-        }
-
-        societyStats[societyKey]
-          .updated++;
-
-        /*
-         * ======================================================
-         * LOG
-         * ======================================================
-         */
         console.log(
-          `✅ Late fee applied - Society: ${societyKey}, Flat: ${record.flat_no}`
+          `Late fee applied for ${user.email} - Flat ${user.flat_no}`
         );
 
         /*
-         * ======================================================
-         * SEND OVERDUE EMAIL
-         * ======================================================
+         * If your existing project already has an email
+         * utility for late-fee notifications, call it here.
+         *
+         * Database update does not depend on email success.
          */
-        if (
-          record.user_id &&
-          record.user_id.email
-        ) {
 
-          try {
-
-            await emailService.sendMaintenanceReminder({
-              email:
-                record.user_id.email,
-
-              name:
-                record.user_id.name,
-
-              flat_no:
-                record.flat_no,
-
-              amount:
-                record.total_amount,
-
-              month:
-                record.month,
-
-              year:
-                record.year,
-
-              due_date:
-                record.due_date,
-
-              is_overdue:
-                true
-            });
-
-          } catch (emailErr) {
-
-            console.error(
-              `Failed overdue email to ${record.user_id.email}:`,
-              emailErr.message
-            );
-
-          }
-        }
-
-      } catch (err) {
+      } catch (emailError) {
 
         console.error(
-          `Error applying late fee to flat ${record.flat_no}:`,
-          err.message
+          `Late fee email failed for ${user.email}:`,
+          emailError.message
         );
 
-        errors++;
-
-        /*
-         * ======================================================
-         * SOCIETY ERROR STATISTICS
-         * ======================================================
-         */
-        if (
-          record.society_id
-        ) {
-
-          const societyKey =
-            record.society_id.toString();
-
-          if (
-            !societyStats[societyKey]
-          ) {
-            societyStats[societyKey] = {
-              updated: 0,
-              skippedManagers: 0,
-              errors: 0
-            };
-          }
-
-          societyStats[societyKey]
-            .errors++;
-        }
       }
+
     }
 
-    /*
-     * ==========================================================
-     * LOG SUMMARY
-     * ==========================================================
-     */
-    console.log(
-      `📊 Late fee application complete`
-    );
 
-    console.log(
-      `   Updated: ${updated}`
-    );
-
-    console.log(
-      `   Manager records skipped: ${skippedManagers}`
-    );
-
-    console.log(
-      `   Errors: ${errors}`
-    );
+    // ========================================================
+    // RESULT
+    // ========================================================
 
     return {
+      success: true,
+
+      message:
+        'Late fee process completed successfully.',
+
+      societies_processed:
+        societies.length,
+
+      records_checked:
+        maintenanceRecords.length,
+
       updated,
 
-      skippedManagers,
+      skipped,
 
-      errors,
-
-      societies:
-        societyStats
+      records:
+        updatedRecords
     };
 
   } catch (error) {
 
     console.error(
-      '❌ Error in applyLateFees:',
+      'Apply late fees error:',
       error
     );
 
-    throw error;
+    return {
+      success: false,
+
+      message:
+        error.message ||
+        'Failed to apply late fees.',
+
+      updated: 0,
+
+      skipped: 0
+    };
   }
 };
 
 
-/**
- * ============================================================
- * MANUALLY TRIGGER LATE FEE CHECK
- * ============================================================
- */
-const checkAndApplyLateFees =
-  async () => {
+// ============================================================
+// CHECK AND APPLY LATE FEES
+//
+// Used by scheduled cron job.
+// ============================================================
+
+const checkAndApplyLateFees = async () => {
+
+  try {
+
     return await applyLateFees();
-  };
+
+  } catch (error) {
+
+    console.error(
+      'Check and apply late fees error:',
+      error
+    );
+
+    return {
+      success: false,
+      message:
+        error.message ||
+        'Failed to check and apply late fees.'
+    };
+  }
+};
 
 
-/**
- * ============================================================
- * EXPORTS
- * ============================================================
- */
+// ============================================================
+// EXPORTS
+// ============================================================
+
 module.exports = {
   applyLateFees,
   checkAndApplyLateFees

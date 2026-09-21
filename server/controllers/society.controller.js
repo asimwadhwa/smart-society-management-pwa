@@ -1,6 +1,5 @@
 const Society = require('../models/Society');
 const User = require('../models/User');
-const Maintenance = require('../models/Maintenance');
 const mongoose = require('mongoose');
 
 // ============================================================
@@ -17,154 +16,6 @@ const cleanString = (value) => {
     : '';
 };
 
-// ============================================================
-// CREATE CURRENT MONTH MAINTENANCE FOR USER
-// ============================================================
-
-const createCurrentMonthMaintenance = async (
-  user,
-  societyId
-) => {
-  try {
-    if (!user || !user._id) {
-      return null;
-    }
-
-    if (!societyId) {
-      return null;
-    }
-
-    if (!user.flat_no) {
-      console.log(
-        `⚠️ Maintenance skipped for ${user.name}: flat number missing`
-      );
-
-      return null;
-    }
-
-    const now = new Date();
-
-    const month =
-      now.getMonth() + 1;
-
-    const year =
-      now.getFullYear();
-
-    // --------------------------------------------------------
-    // Check if maintenance already exists
-    // --------------------------------------------------------
-
-    const existing =
-      await Maintenance.findOne({
-        society_id: societyId,
-        user_id: user._id,
-        month,
-        year
-      });
-
-    if (existing) {
-      console.log(
-        `ℹ️ Maintenance already exists for ${user.name} - ${month}/${year}`
-      );
-
-      return existing;
-    }
-
-    // --------------------------------------------------------
-    // Due date
-    // --------------------------------------------------------
-
-    const dueDate =
-      new Date(
-        year,
-        month - 1,
-        18
-      );
-
-    // --------------------------------------------------------
-    // Create maintenance
-    // --------------------------------------------------------
-
-    const maintenance =
-      await Maintenance.create({
-        society_id: societyId,
-
-        user_id: user._id,
-
-        flat_no:
-          user.flat_no,
-
-        month,
-
-        year,
-
-        amount: 1000,
-
-        late_fee: 0,
-
-        total_amount: 1000,
-
-        due_date:
-          dueDate,
-
-        paid_date: null,
-
-        status: 'pending',
-
-        razorpay_payment_id:
-          null,
-
-        razorpay_order_id:
-          null
-      });
-
-    console.log(
-      `✅ Current month maintenance created for ${user.name} - ${month}/${year}`
-    );
-
-    return maintenance;
-
-  } catch (error) {
-
-    /*
-     * If another request created the same record
-     * at the same time, don't fail manager creation.
-     */
-    if (
-      error.code === 11000
-    ) {
-
-      console.log(
-        `ℹ️ Maintenance already exists for user ${user._id}`
-      );
-
-      return await Maintenance.findOne({
-        society_id:
-          societyId,
-
-        user_id:
-          user._id,
-
-        month:
-          new Date().getMonth() + 1,
-
-        year:
-          new Date().getFullYear()
-      });
-    }
-
-    console.error(
-      'Error creating current month maintenance:',
-      error
-    );
-
-    /*
-     * Manager creation should not fail only because
-     * maintenance creation failed.
-     */
-    return null;
-  }
-};
 
 // ============================================================
 // CREATE SOCIETY
@@ -264,6 +115,7 @@ exports.createSociety = async (
 
     const society =
       await Society.create({
+
         name:
           cleanName,
 
@@ -283,13 +135,30 @@ exports.createSociety = async (
           cleanContact,
 
         is_active:
-          true
+          true,
+
+        // ====================================================
+        // MAINTENANCE SETTINGS
+        // No default maintenance amount
+        // ====================================================
+
+        maintenance_amount:
+          null,
+
+        maintenance_due_day:
+          null,
+
+        maintenance_late_fee:
+          null
       });
 
     return res.status(201).json({
+
       success: true,
+
       message:
         'Society created successfully',
+
       data:
         society
     });
@@ -309,6 +178,7 @@ exports.createSociety = async (
     next(error);
   }
 };
+
 
 // ============================================================
 // GET ALL SOCIETIES
@@ -332,15 +202,21 @@ exports.getAllSocieties =
           });
 
       return res.status(200).json({
+
         success: true,
+
         data:
           societies
+
       });
 
     } catch (error) {
+
       next(error);
+
     }
   };
+
 
 // ============================================================
 // GET SOCIETY BY ID
@@ -382,15 +258,21 @@ exports.getSocietyById =
       }
 
       return res.status(200).json({
+
         success: true,
+
         data:
           society
+
       });
 
     } catch (error) {
+
       next(error);
+
     }
   };
+
 
 // ============================================================
 // UPDATE SOCIETY
@@ -441,6 +323,10 @@ exports.updateSociety =
         });
       }
 
+      // ======================================================
+      // NAME
+      // ======================================================
+
       if (
         name !== undefined
       ) {
@@ -459,6 +345,11 @@ exports.updateSociety =
         society.name =
           value;
       }
+
+
+      // ======================================================
+      // SOCIETY CODE
+      // ======================================================
 
       if (
         society_code !==
@@ -482,26 +373,82 @@ exports.updateSociety =
           value;
       }
 
+
+      // ======================================================
+      // ADDRESS
+      // ======================================================
+
       if (
         address !== undefined
       ) {
-        society.address =
+
+        const value =
           cleanString(address);
+
+        if (!value) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Society address cannot be empty'
+          });
+        }
+
+        society.address =
+          value;
       }
+
+
+      // ======================================================
+      // CITY
+      // ======================================================
 
       if (
         city !== undefined
       ) {
-        society.city =
+
+        const value =
           cleanString(city);
+
+        if (!value) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'City cannot be empty'
+          });
+        }
+
+        society.city =
+          value;
       }
+
+
+      // ======================================================
+      // STATE
+      // ======================================================
 
       if (
         state !== undefined
       ) {
-        society.state =
+
+        const value =
           cleanString(state);
+
+        if (!value) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'State cannot be empty'
+          });
+        }
+
+        society.state =
+          value;
       }
+
+
+      // ======================================================
+      // CONTACT NUMBER
+      // ======================================================
 
       if (
         contact_number !==
@@ -528,6 +475,11 @@ exports.updateSociety =
         society.contact_number =
           value;
       }
+
+
+      // ======================================================
+      // ACTIVE STATUS
+      // ======================================================
 
       if (
         is_active !==
@@ -567,11 +519,15 @@ exports.updateSociety =
       await society.save();
 
       return res.status(200).json({
+
         success: true,
+
         message:
           'Society updated successfully',
+
         data:
           society
+
       });
 
     } catch (error) {
@@ -580,16 +536,21 @@ exports.updateSociety =
         error.code ===
         11000
       ) {
+
         return res.status(400).json({
+
           success: false,
+
           message:
             'Society code already exists'
+
         });
       }
 
       next(error);
     }
   };
+
 
 // ============================================================
 // DEACTIVATE SOCIETY
@@ -605,9 +566,12 @@ exports.deactivateSociety =
 
     try {
 
+      const societyId =
+        req.params.id;
+
       if (
         !isValidObjectId(
-          req.params.id
+          societyId
         )
       ) {
         return res.status(400).json({
@@ -619,7 +583,7 @@ exports.deactivateSociety =
 
       const society =
         await Society.findById(
-          req.params.id
+          societyId
         );
 
       if (!society) {
@@ -636,17 +600,24 @@ exports.deactivateSociety =
       await society.save();
 
       return res.status(200).json({
+
         success: true,
+
         message:
           'Society deactivated successfully',
+
         data:
           society
+
       });
 
     } catch (error) {
+
       next(error);
+
     }
   };
+
 
 // ============================================================
 // ACTIVATE SOCIETY
@@ -662,9 +633,12 @@ exports.activateSociety =
 
     try {
 
+      const societyId =
+        req.params.id;
+
       if (
         !isValidObjectId(
-          req.params.id
+          societyId
         )
       ) {
         return res.status(400).json({
@@ -676,7 +650,7 @@ exports.activateSociety =
 
       const society =
         await Society.findById(
-          req.params.id
+          societyId
         );
 
       if (!society) {
@@ -693,17 +667,24 @@ exports.activateSociety =
       await society.save();
 
       return res.status(200).json({
+
         success: true,
+
         message:
           'Society activated successfully',
+
         data:
           society
+
       });
 
     } catch (error) {
+
       next(error);
+
     }
   };
+
 
 // ============================================================
 // GET SOCIETY STATISTICS
@@ -757,6 +738,7 @@ exports.getSocietyStats =
         watchmen
       ] =
         await Promise.all([
+
           User.countDocuments({
             society_id:
               societyId
@@ -803,9 +785,11 @@ exports.getSocietyStats =
             role:
               'watchman'
           })
+
         ]);
 
       return res.status(200).json({
+
         success: true,
 
         data: {
@@ -825,6 +809,7 @@ exports.getSocietyStats =
           watchmen,
 
           society: {
+
             _id:
               society._id,
 
@@ -835,10 +820,21 @@ exports.getSocietyStats =
               society.society_code,
 
             is_active:
-              society.is_active
+              society.is_active,
+
+            maintenance_amount:
+              society.maintenance_amount,
+
+            maintenance_due_day:
+              society.maintenance_due_day,
+
+            maintenance_late_fee:
+              society.maintenance_late_fee
+
           },
 
           users: {
+
             total:
               totalUsers,
 
@@ -847,9 +843,11 @@ exports.getSocietyStats =
 
             inactive:
               inactiveUsers
+
           },
 
           roles: {
+
             manager:
               managers,
 
@@ -861,14 +859,20 @@ exports.getSocietyStats =
 
             watchman:
               watchmen
+
           }
+
         }
+
       });
 
     } catch (error) {
+
       next(error);
+
     }
   };
+
 
 // ============================================================
 // GET SOCIETY MANAGER
@@ -914,16 +918,19 @@ exports.getSocietyManager =
 
       const manager =
         await User.findOne({
+
           society_id:
             societyId,
 
           role:
             'manager'
+
         }).select(
           '-password_hash -otp -otp_expires -reset_password_otp -reset_password_otp_expires'
         );
 
       return res.status(200).json({
+
         success: true,
 
         data:
@@ -931,16 +938,19 @@ exports.getSocietyManager =
 
         hasManager:
           !!manager
+
       });
 
     } catch (error) {
+
       next(error);
+
     }
   };
 
+
 // ============================================================
 // ASSIGN / REPLACE MANAGER
-//
 // PUT /api/societies/:id/manager
 // ============================================================
 
@@ -993,20 +1003,23 @@ exports.assignOrReplaceManager =
 
       const currentManager =
         await User.findOne({
+
           society_id:
             societyId,
 
           role:
             'manager'
+
         });
 
       const {
         user_id
       } = req.body;
 
-      // ========================================================
+
+      // ======================================================
       // EXISTING USER -> MANAGER
-      // ========================================================
+      // ======================================================
 
       if (user_id) {
 
@@ -1037,6 +1050,7 @@ exports.assignOrReplaceManager =
 
         const newManager =
           await User.findOne({
+
             _id:
               user_id,
 
@@ -1052,6 +1066,7 @@ exports.assignOrReplaceManager =
 
             is_active:
               true
+
           });
 
         if (!newManager) {
@@ -1062,9 +1077,9 @@ exports.assignOrReplaceManager =
           });
         }
 
-        // ------------------------------------------------------
+        // ----------------------------------------------------
         // Promote existing user
-        // ------------------------------------------------------
+        // ----------------------------------------------------
 
         newManager.role =
           'manager';
@@ -1074,19 +1089,11 @@ exports.assignOrReplaceManager =
 
         await newManager.save();
 
-        // ------------------------------------------------------
+
+        // ----------------------------------------------------
         // IMPORTANT:
-        // Create current month's maintenance immediately
-        // ------------------------------------------------------
-
-        await createCurrentMonthMaintenance(
-          newManager,
-          societyId
-        );
-
-        // ------------------------------------------------------
-        // Retire old manager
-        // ------------------------------------------------------
+        // NO MAINTENANCE CREATED FOR MANAGER
+        // ----------------------------------------------------
 
         if (
           currentManager
@@ -1099,6 +1106,7 @@ exports.assignOrReplaceManager =
             false;
 
           await currentManager.save();
+
         }
 
         return res.status(200).json({
@@ -1128,14 +1136,19 @@ exports.assignOrReplaceManager =
 
               society_code:
                 society.society_code
+
             }
+
           }
+
         });
+
       }
 
-      // ========================================================
+
+      // ======================================================
       // CREATE NEW MANAGER
-      // ========================================================
+      // ======================================================
 
       const {
         name,
@@ -1144,6 +1157,7 @@ exports.assignOrReplaceManager =
         phone,
         flat_no
       } = req.body;
+
 
       const cleanName =
         cleanString(name);
@@ -1165,6 +1179,7 @@ exports.assignOrReplaceManager =
       const cleanFlatNo =
         cleanString(flat_no);
 
+
       if (
         !cleanName ||
         !cleanEmail ||
@@ -1179,6 +1194,7 @@ exports.assignOrReplaceManager =
         });
       }
 
+
       if (
         cleanName.length < 2
       ) {
@@ -1188,6 +1204,7 @@ exports.assignOrReplaceManager =
             'Name must be at least 2 characters'
         });
       }
+
 
       if (
         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
@@ -1201,6 +1218,7 @@ exports.assignOrReplaceManager =
         });
       }
 
+
       if (
         cleanPassword.length < 8
       ) {
@@ -1210,6 +1228,7 @@ exports.assignOrReplaceManager =
             'Password must be at least 8 characters'
         });
       }
+
 
       if (
         !/^[6-9]\d{9}$/.test(
@@ -1223,29 +1242,36 @@ exports.assignOrReplaceManager =
         });
       }
 
-      // ========================================================
+
+      // ======================================================
       // EMAIL UNIQUE
-      // ========================================================
+      // ======================================================
 
       const existingEmail =
         await User.findOne({
+
           email:
             cleanEmail
+
         });
 
       if (
         existingEmail
       ) {
         return res.status(400).json({
+
           success: false,
+
           message:
             'Email is already registered. Please use another email.'
+
         });
       }
 
-      // ========================================================
+
+      // ======================================================
       // FLAT UNIQUE WITHIN SOCIETY
-      // ========================================================
+      // ======================================================
 
       const existingFlat =
         await User.findOne({
@@ -1258,21 +1284,26 @@ exports.assignOrReplaceManager =
 
           is_active:
             true
+
         });
 
       if (
         existingFlat
       ) {
         return res.status(400).json({
+
           success: false,
+
           message:
             `Flat ${cleanFlatNo} is already registered in ${society.name}`
+
         });
       }
 
-      // ========================================================
+
+      // ======================================================
       // CREATE NEW MANAGER
-      // ========================================================
+      // ======================================================
 
       const manager =
         await User.create({
@@ -1303,21 +1334,19 @@ exports.assignOrReplaceManager =
 
           is_verified:
             true
+
         });
 
-      // ========================================================
+
+      // ------------------------------------------------------
       // IMPORTANT:
-      // CREATE CURRENT MONTH MAINTENANCE IMMEDIATELY
-      // ========================================================
+      // NO MAINTENANCE CREATED FOR MANAGER
+      // ------------------------------------------------------
 
-      await createCurrentMonthMaintenance(
-        manager,
-        societyId
-      );
 
-      // ========================================================
+      // ======================================================
       // RETIRE OLD MANAGER
-      // ========================================================
+      // ======================================================
 
       if (
         currentManager
@@ -1330,7 +1359,9 @@ exports.assignOrReplaceManager =
           false;
 
         await currentManager.save();
+
       }
+
 
       return res.status(
         currentManager
@@ -1365,8 +1396,11 @@ exports.assignOrReplaceManager =
 
             society_code:
               society.society_code
+
           }
+
         }
+
       });
 
     } catch (error) {
@@ -1394,6 +1428,7 @@ exports.assignOrReplaceManager =
                   err.message
               )
               .join('. ')
+
         });
       }
 
@@ -1408,6 +1443,7 @@ exports.assignOrReplaceManager =
 
           message:
             'Duplicate data already exists'
+
         });
       }
 
@@ -1415,9 +1451,9 @@ exports.assignOrReplaceManager =
     }
   };
 
+
 // ============================================================
 // REMOVE MANAGER
-//
 // DELETE /api/societies/:id/manager
 // ============================================================
 
@@ -1460,11 +1496,13 @@ exports.removeSocietyManager =
 
       const manager =
         await User.findOne({
+
           society_id:
             societyId,
 
           role:
             'manager'
+
         });
 
       if (!manager) {
@@ -1505,11 +1543,16 @@ exports.removeSocietyManager =
 
             society_code:
               society.society_code
+
           }
+
         }
+
       });
 
     } catch (error) {
+
       next(error);
+
     }
   };

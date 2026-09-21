@@ -2,17 +2,16 @@ const express = require('express');
 
 const router = express.Router();
 
-const paymentController = require('../controllers/payment.controller');
+const paymentController =
+  require('../controllers/payment.controller');
 
 const {
-  authenticate,
-  authorize
+  authenticate
 } = require('../middleware/auth.middleware');
 
 
 // ============================================================
 // RAZORPAY WEBHOOK
-// Public route
 // ============================================================
 
 router.post(
@@ -22,35 +21,21 @@ router.post(
 
 
 // ============================================================
-// PROTECTED PAYMENT ROUTES
+// AUTHENTICATION
 // ============================================================
 
 router.use(authenticate);
 
 
 // ============================================================
-// ALL PAYMENTS
-// Super Admin = all societies
-// Manager/Admin = own society
+// PAYMENT STATUS
+// IMPORTANT:
+// Keep /status/:orderId BEFORE /:paymentId
 // ============================================================
 
 router.get(
-  '/all',
-  authorize('super_admin', 'manager', 'admin'),
-  paymentController.getAllPayments
-);
-
-
-// ============================================================
-// PAYMENT STATS
-// Super Admin = all societies
-// Manager/Admin = own society
-// ============================================================
-
-router.get(
-  '/stats',
-  authorize('super_admin', 'manager', 'admin'),
-  paymentController.getPaymentStats
+  '/status/:orderId',
+  paymentController.getPaymentStatus
 );
 
 
@@ -61,17 +46,6 @@ router.get(
 router.post(
   '/verify',
   paymentController.verifyPayment
-);
-
-
-// ============================================================
-// PAYMENT STATUS
-// IMPORTANT: Must come before /:paymentId
-// ============================================================
-
-router.get(
-  '/status/:orderId',
-  paymentController.getPaymentStatus
 );
 
 

@@ -2,12 +2,14 @@ const express = require('express');
 
 const router = express.Router();
 
-const maintenanceController = require('../controllers/maintenance.controller');
+const maintenanceController =
+  require('../controllers/maintenance.controller');
 
 const {
   authenticate,
   authorize
 } = require('../middleware/auth.middleware');
+
 
 // ============================================================
 // AUTHENTICATION
@@ -15,91 +17,137 @@ const {
 
 router.use(authenticate);
 
+
 // ============================================================
-// USER MAINTENANCE
+// RESIDENT / ADMIN USER MAINTENANCE
 // ============================================================
 
-// GET /api/maintenance
+// Get logged-in user's maintenance
 router.get(
   '/',
   maintenanceController.getUserMaintenance
 );
 
-// GET /api/maintenance/current
+
+// Current month maintenance
 router.get(
   '/current',
   maintenanceController.getCurrentMonthStatus
 );
 
-// GET /api/maintenance/history
+
+// Payment history
 router.get(
   '/history',
   maintenanceController.getPaymentHistory
 );
 
+
 // ============================================================
-// MANAGER / ADMIN / SUPER ADMIN
+// MANAGER / ADMIN MAINTENANCE MANAGEMENT
 // ============================================================
 
-// GET /api/maintenance/all
+// Get maintenance settings
+router.get(
+  '/settings',
+  authorize('manager', 'admin'),
+  maintenanceController.getMaintenanceSettings
+);
+
+
+// Update maintenance settings
+router.put(
+  '/settings',
+  authorize('manager', 'admin'),
+  maintenanceController.updateMaintenanceSettings
+);
+
+
+// ============================================================
+// MANAGER / ADMIN + SUPER ADMIN
+// ============================================================
+
+// Get all maintenance records
 router.get(
   '/all',
-  authorize('super_admin', 'manager', 'admin'),
+  authorize(
+    'super_admin',
+    'manager',
+    'admin'
+  ),
   maintenanceController.getAllMaintenance
 );
 
-// GET /api/maintenance/stats
+
+// Get maintenance statistics
 router.get(
   '/stats',
-  authorize('super_admin', 'manager', 'admin'),
+  authorize(
+    'super_admin',
+    'manager',
+    'admin'
+  ),
   maintenanceController.getPaymentStats
 );
 
+
 // ============================================================
-// RAZORPAY
+// RESIDENT / ADMIN PAYMENT
 // ============================================================
 
-// POST /api/maintenance/create-order
+// Create Razorpay order
 router.post(
   '/create-order',
   maintenanceController.createOrder
 );
 
+
 // ============================================================
-// MAINTENANCE GENERATION
+// MANAGER / ADMIN
 // ============================================================
 
-// POST /api/maintenance/generate
-// Manager only
+// Generate monthly maintenance
 router.post(
   '/generate',
-  authorize('manager'),
+  authorize('manager', 'admin'),
   maintenanceController.generateMonthlyMaintenance
 );
 
+
+// Edit unpaid maintenance
+router.put(
+  '/:id',
+  authorize('manager', 'admin'),
+  maintenanceController.updateMaintenance
+);
+
+
 // ============================================================
-// MANUAL CRON TRIGGERS
+// MANUAL JOB CONTROLS
 // ============================================================
 
-// POST /api/maintenance/cron/generate
+// Generate maintenance manually
 router.post(
   '/cron/generate',
-  authorize('manager'),
+  authorize('manager', 'admin'),
   maintenanceController.triggerMaintenanceGeneration
 );
 
-// POST /api/maintenance/cron/late-fees
+
+// Apply late fees manually
 router.post(
   '/cron/late-fees',
-  authorize('manager'),
+  authorize('manager', 'admin'),
   maintenanceController.triggerLateFeeApplication
 );
 
-// POST /api/maintenance/cron/reminders
+
+// Send payment reminders manually
 router.post(
   '/cron/reminders',
-  authorize('manager'),
+  authorize('manager', 'admin'),
   maintenanceController.triggerPaymentReminders
 );
+
 
 module.exports = router;

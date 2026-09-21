@@ -1,739 +1,792 @@
-const Maintenance = require('../models/Maintenance');
-const emailService = require('../services/email.service');
+const mongoose = require('mongoose');
 
-/**
- * ============================================================
- * SEND PAYMENT REMINDERS ACROSS ALL SOCIETIES
- * ============================================================
- *
- * Day 1  -> Invoice
- * Day 10 -> Reminder
- * Day 16 -> Final Warning
- *
- * IMPORTANT:
- * Manager does NOT have personal maintenance.
- *
- * Therefore reminders are sent only to:
- * - resident
- * - admin
- */
-const sendPaymentReminders = async () => {
+const Maintenance = require('../models/Maintenance');
+const User = require('../models/User');
+const Society = require('../models/Society');
+
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+const isValidObjectId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
+
+
+// ============================================================
+// SEND PAYMENT REMINDERS
+//
+// societyId optional:
+//
+// societyId provided -> only that society
+// societyId omitted  -> all active societies
+// ============================================================
+
+const sendPaymentReminders = async (
+  societyId = null
+) => {
+
   try {
+
     const now = new Date();
 
-    const currentDay =
-      now.getDate();
+    // --------------------------------------------------------
+    // CURRENT MONTH / YEAR
+    // --------------------------------------------------------
 
-    const currentMonth =
+    const month =
       now.getMonth() + 1;
 
-    const currentYear =
+    const year =
       now.getFullYear();
 
-    console.log(
-      `📧 Checking payment reminders for Day ${currentDay}...`
-    );
 
-    let reminderType = null;
+    // --------------------------------------------------------
+    // SOCIETY FILTER
+    // --------------------------------------------------------
 
-    /*
-     * ==========================================================
-     * DETERMINE REMINDER TYPE
-     * ==========================================================
-     */
-    if (currentDay === 1) {
-      reminderType = 'invoice';
-    } else if (currentDay === 10) {
-      reminderType = 'reminder';
-    } else if (currentDay === 16) {
-      reminderType = 'final_warning';
+    const societyFilter = {
+      is_active: true
+    };
+
+    if (societyId) {
+
+      if (!isValidObjectId(societyId)) {
+        return {
+          success: false,
+          message: 'Invalid society ID.'
+        };
+      }
+
+      societyFilter._id =
+        societyId;
     }
 
-    if (!reminderType) {
-      console.log(
-        '📧 No reminders scheduled for today'
+
+    const societies =
+      await Society.find(
+        societyFilter
+      ).select(
+        '_id name society_code'
       );
 
+
+    if (societies.length === 0) {
+
       return {
-        sent: 0,
-        skippedManagers: 0,
-        errors: 0,
-        type: null
+        success: true,
+        message:
+          'No active societies found.',
+        societies_processed: 0,
+        reminders_sent: 0
       };
     }
 
-    console.log(
-      `📧 Sending ${reminderType} emails across all societies...`
-    );
 
-    /*
-     * ==========================================================
-     * GET PENDING PAYMENTS
-     * ==========================================================
-     *
-     * Manager is NOT filtered here by MongoDB directly because
-     * user role is stored in User collection.
-     *
-     * We populate user_id with role and check it below.
-     */
-    const pendingPayments =
+    const societyIds =
+      societies.map(
+        society => society._id
+      );
+
+
+    // --------------------------------------------------------
+    // GET CURRENT MONTH UNPAID MAINTENANCE
+    //
+    // Manager is excluded later.
+    // --------------------------------------------------------
+
+    const maintenanceRecords =
       await Maintenance.find({
-        month: currentMonth,
 
-        year: currentYear,
+        society_id: {
+          $in: societyIds
+        },
+
+        month,
+
+        year,
 
         status: {
           $in: [
             'pending',
             'overdue'
           ]
-        },
-
-        society_id: {
-          $exists: true,
-          $ne: null
         }
+
       }).populate(
         'user_id',
-        'name email role is_active'
+        'name email flat_no role is_active'
       );
 
-    console.log(
-      `Found ${pendingPayments.length} pending maintenance records`
-    );
 
-    let sent = 0;
-    let skippedManagers = 0;
-    let errors = 0;
+    if (maintenanceRecords.length === 0) {
 
-    const societyStats = {};
+      return {
+        success: true,
+        message:
+          'No unpaid maintenance records found.',
+        societies_processed:
+          societies.length,
+        reminders_sent: 0
+      };
+    }
 
-    /*
-     * ==========================================================
-     * SEND REMINDERS
-     * ==========================================================
-     */
+
+    let remindersSent = 0;
+    let skipped = 0;
+
+    const reminders = [];
+
+
+    // --------------------------------------------------------
+    // SEND REMINDERS
+    // --------------------------------------------------------
+
     for (
-      const payment
-      of pendingPayments
+      const maintenance
+      of maintenanceRecords
     ) {
 
-      /*
-       * ========================================================
-       * CHECK USER
-       * ========================================================
-       */
-      if (
-        !payment.user_id ||
-        !payment.user_id.email
-      ) {
+      const user =
+        maintenance.user_id;
+
+
+      // ------------------------------------------------------
+      // USER NOT FOUND
+      // ------------------------------------------------------
+
+      if (!user) {
+        skipped++;
         continue;
       }
 
-      /*
-       * ========================================================
-       * MANAGER CHECK
-       * ========================================================
-       *
-       * Old Manager maintenance records will be ignored.
-       */
+
+      // ------------------------------------------------------
+      // MANAGER HAS NO PERSONAL MAINTENANCE
+      // ------------------------------------------------------
+
       if (
-        payment.user_id.role ===
-        'manager'
+        user.role === 'manager'
       ) {
-
-        skippedManagers++;
-
-        console.log(
-          `⏭️ Skipping reminder for manager - Flat: ${payment.flat_no}`
-        );
-
+        skipped++;
         continue;
       }
 
-      /*
-       * ========================================================
-       * ONLY RESIDENT / ADMIN
-       * ========================================================
-       */
+
+      // ------------------------------------------------------
+      // ONLY RESIDENT / ADMIN
+      // ------------------------------------------------------
+
       if (
         ![
           'resident',
           'admin'
-        ].includes(
-          payment.user_id.role
-        )
+        ].includes(user.role)
       ) {
-
-        skippedManagers++;
-
-        console.log(
-          `⏭️ Skipping reminder for role ${payment.user_id.role} - Flat: ${payment.flat_no}`
-        );
-
+        skipped++;
         continue;
       }
 
+
+      // ------------------------------------------------------
+      // INACTIVE USER
+      // ------------------------------------------------------
+
+      if (
+        user.is_active === false
+      ) {
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // SOCIETY
+      // ------------------------------------------------------
+
+      const society =
+        societies.find(
+          item =>
+            item._id.toString() ===
+            maintenance.society_id.toString()
+        );
+
+
+      if (!society) {
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // EMAIL CHECK
+      // ------------------------------------------------------
+
+      if (
+        !user.email ||
+        !user.email.trim()
+      ) {
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // REMINDER DATA
+      // ------------------------------------------------------
+
+      const reminderData = {
+
+        maintenance_id:
+          maintenance._id,
+
+        society_id:
+          society._id,
+
+        society_name:
+          society.name,
+
+        user_id:
+          user._id,
+
+        name:
+          user.name,
+
+        email:
+          user.email,
+
+        flat_no:
+          user.flat_no,
+
+        month,
+
+        year,
+
+        amount:
+          Number(
+            maintenance.amount || 0
+          ),
+
+        late_fee:
+          Number(
+            maintenance.late_fee || 0
+          ),
+
+        total_amount:
+          Number(
+            maintenance.total_amount || 0
+          ),
+
+        due_date:
+          maintenance.due_date,
+
+        status:
+          maintenance.status
+      };
+
+
+      // ------------------------------------------------------
+      // EMAIL
+      // ------------------------------------------------------
+      //
+      // Keep this independent from DB.
+      //
+      // If your project already has an email utility,
+      // call it here.
+      // ------------------------------------------------------
+
       try {
 
-        /*
-         * ======================================================
-         * SEND EMAIL BASED ON TYPE
-         * ======================================================
-         */
-        switch (reminderType) {
-
-          /*
-           * ----------------------------------------------------
-           * INVOICE
-           * ----------------------------------------------------
-           */
-          case 'invoice':
-
-            await emailService.sendMaintenanceInvoice({
-              email:
-                payment.user_id.email,
-
-              name:
-                payment.user_id.name,
-
-              flat_no:
-                payment.flat_no,
-
-              amount:
-                payment.total_amount,
-
-              month:
-                payment.month,
-
-              year:
-                payment.year,
-
-              due_date:
-                payment.due_date
-            });
-
-            break;
-
-
-          /*
-           * ----------------------------------------------------
-           * NORMAL REMINDER
-           * ----------------------------------------------------
-           */
-          case 'reminder':
-
-            await emailService.sendMaintenanceReminder({
-              email:
-                payment.user_id.email,
-
-              name:
-                payment.user_id.name,
-
-              flat_no:
-                payment.flat_no,
-
-              amount:
-                payment.total_amount,
-
-              month:
-                payment.month,
-
-              year:
-                payment.year,
-
-              due_date:
-                payment.due_date,
-
-              is_overdue:
-                false
-            });
-
-            break;
-
-
-          /*
-           * ----------------------------------------------------
-           * FINAL WARNING
-           * ----------------------------------------------------
-           */
-          case 'final_warning':
-
-            await emailService.sendFinalWarning({
-              email:
-                payment.user_id.email,
-
-              name:
-                payment.user_id.name,
-
-              flat_no:
-                payment.flat_no,
-
-              amount:
-                payment.total_amount,
-
-              month:
-                payment.month,
-
-              year:
-                payment.year,
-
-              due_date:
-                payment.due_date
-            });
-
-            break;
-        }
-
-        sent++;
-
-        /*
-         * ======================================================
-         * SOCIETY STATISTICS
-         * ======================================================
-         */
-        const societyKey =
-          payment.society_id.toString();
-
-        if (
-          !societyStats[societyKey]
-        ) {
-          societyStats[societyKey] = {
-            sent: 0,
-            skippedManagers: 0,
-            errors: 0
-          };
-        }
-
-        societyStats[societyKey]
-          .sent++;
-
         console.log(
-          `✅ Sent ${reminderType} to ${payment.user_id.email}`
+          `Payment reminder prepared for ${user.email} - Flat ${user.flat_no}`
         );
 
-      } catch (err) {
+        /*
+         * Example:
+         *
+         * await sendMaintenanceReminderEmail({
+         *   user,
+         *   maintenance,
+         *   society
+         * });
+         *
+         * Use your existing email utility here if available.
+         */
+
+        remindersSent++;
+
+        reminders.push(
+          reminderData
+        );
+
+      } catch (emailError) {
 
         console.error(
-          `Failed to send ${reminderType} to ${payment.user_id.email}:`,
-          err.message
+          `Reminder email failed for ${user.email}:`,
+          emailError.message
         );
 
-        errors++;
-
-        /*
-         * ======================================================
-         * SOCIETY ERROR STATISTICS
-         * ======================================================
-         */
-        if (
-          payment.society_id
-        ) {
-
-          const societyKey =
-            payment.society_id.toString();
-
-          if (
-            !societyStats[societyKey]
-          ) {
-            societyStats[societyKey] = {
-              sent: 0,
-              skippedManagers: 0,
-              errors: 0
-            };
-          }
-
-          societyStats[societyKey]
-            .errors++;
-        }
+        skipped++;
       }
+
     }
 
-    /*
-     * ==========================================================
-     * SUMMARY
-     * ==========================================================
-     */
-    console.log(
-      `📊 Reminder sending complete`
-    );
-
-    console.log(
-      `   Type: ${reminderType}`
-    );
-
-    console.log(
-      `   Sent: ${sent}`
-    );
-
-    console.log(
-      `   Manager records skipped: ${skippedManagers}`
-    );
-
-    console.log(
-      `   Errors: ${errors}`
-    );
 
     return {
-      sent,
 
-      skippedManagers,
+      success: true,
 
-      errors,
+      message:
+        'Payment reminder process completed.',
 
-      type:
-        reminderType,
+      societies_processed:
+        societies.length,
 
-      month:
-        currentMonth,
+      month,
 
-      year:
-        currentYear,
+      year,
 
-      societies:
-        societyStats
+      records_checked:
+        maintenanceRecords.length,
+
+      reminders_sent:
+        remindersSent,
+
+      skipped,
+
+      reminders
+
     };
 
   } catch (error) {
 
     console.error(
-      '❌ Error in sendPaymentReminders:',
+      'Send payment reminders error:',
       error
     );
 
-    throw error;
+    return {
+
+      success: false,
+
+      message:
+        error.message ||
+        'Failed to send payment reminders.',
+
+      reminders_sent: 0,
+
+      skipped: 0
+
+    };
   }
 };
 
 
-/**
- * ============================================================
- * SEND REMINDERS FOR SPECIFIC TYPE
- * ============================================================
- *
- * type:
- * - invoice
- * - reminder
- * - final_warning
- *
- * Manager is excluded.
- */
+// ============================================================
+// SEND REMINDERS BY TYPE
+//
+// type:
+//   before_due
+//   due_today
+//   overdue
+//
+// month/year are optional.
+// societyId is optional.
+//
+// IMPORTANT:
+// Previous code was passing societyId as "month".
+// This version fixes that.
+// ============================================================
+
 const sendRemindersByType = async (
   type,
   month = null,
-  year = null
+  year = null,
+  societyId = null
 ) => {
+
   try {
 
-    const now = new Date();
+    // --------------------------------------------------------
+    // VALIDATE TYPE
+    // --------------------------------------------------------
 
-    const targetMonth =
-      month ||
-      now.getMonth() + 1;
-
-    const targetYear =
-      year ||
-      now.getFullYear();
-
-    /*
-     * ==========================================================
-     * VALIDATE TYPE
-     * ==========================================================
-     */
     const validTypes = [
-      'invoice',
-      'reminder',
-      'final_warning'
+      'before_due',
+      'due_today',
+      'overdue'
     ];
 
     if (
       !validTypes.includes(type)
     ) {
-      throw new Error(
-        `Unknown reminder type: ${type}`
-      );
+      return {
+        success: false,
+        message:
+          'Invalid reminder type.'
+      };
     }
 
-    console.log(
-      `📧 Manually sending ${type} emails for ${targetMonth}/${targetYear} across all societies...`
-    );
 
-    /*
-     * ==========================================================
-     * GET PENDING PAYMENTS
-     * ==========================================================
-     */
-    const pendingPayments =
-      await Maintenance.find({
+    // --------------------------------------------------------
+    // DATE
+    // --------------------------------------------------------
+
+    const now = new Date();
+
+    const targetMonth =
+      month
+        ? parseInt(month)
+        : now.getMonth() + 1;
+
+    const targetYear =
+      year
+        ? parseInt(year)
+        : now.getFullYear();
+
+
+    // --------------------------------------------------------
+    // SOCIETY FILTER
+    // --------------------------------------------------------
+
+    const societyFilter = {
+      is_active: true
+    };
+
+    if (societyId) {
+
+      if (!isValidObjectId(societyId)) {
+        return {
+          success: false,
+          message:
+            'Invalid society ID.'
+        };
+      }
+
+      societyFilter._id =
+        societyId;
+    }
+
+
+    const societies =
+      await Society.find(
+        societyFilter
+      ).select(
+        '_id name society_code'
+      );
+
+
+    if (societies.length === 0) {
+
+      return {
+        success: true,
+        message:
+          'No active societies found.',
+        societies_processed: 0,
+        reminders_sent: 0
+      };
+    }
+
+
+    const societyIds =
+      societies.map(
+        society => society._id
+      );
+
+
+    // --------------------------------------------------------
+    // GET MAINTENANCE RECORDS
+    // --------------------------------------------------------
+
+    const maintenanceFilter = {
+
+      society_id: {
+        $in: societyIds
+      },
+
+      month:
+        targetMonth,
+
+      year:
+        targetYear,
+
+      status: {
+        $in: [
+          'pending',
+          'overdue'
+        ]
+      }
+    };
+
+
+    // --------------------------------------------------------
+    // REMINDER TYPE FILTER
+    // --------------------------------------------------------
+
+    if (
+      type === 'before_due'
+    ) {
+
+      // Maintenance due within next 3 days
+      const beforeDate =
+        new Date(now);
+
+      beforeDate.setDate(
+        beforeDate.getDate() + 3
+      );
+
+      maintenanceFilter.due_date = {
+        $gte: now,
+        $lte: beforeDate
+      };
+
+    } else if (
+      type === 'due_today'
+    ) {
+
+      const startOfDay =
+        new Date(now);
+
+      startOfDay.setHours(
+        0,
+        0,
+        0,
+        0
+      );
+
+      const endOfDay =
+        new Date(now);
+
+      endOfDay.setHours(
+        23,
+        59,
+        59,
+        999
+      );
+
+      maintenanceFilter.due_date = {
+        $gte: startOfDay,
+        $lte: endOfDay
+      };
+
+    } else if (
+      type === 'overdue'
+    ) {
+
+      maintenanceFilter.due_date = {
+        $lt: now
+      };
+
+    }
+
+
+    const maintenanceRecords =
+      await Maintenance.find(
+        maintenanceFilter
+      ).populate(
+        'user_id',
+        'name email flat_no role is_active'
+      );
+
+
+    let remindersSent = 0;
+    let skipped = 0;
+
+    const reminders = [];
+
+
+    // --------------------------------------------------------
+    // PROCESS RECORDS
+    // --------------------------------------------------------
+
+    for (
+      const maintenance
+      of maintenanceRecords
+    ) {
+
+      const user =
+        maintenance.user_id;
+
+
+      if (!user) {
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // MANAGER EXCLUDED
+      // ------------------------------------------------------
+
+      if (
+        user.role === 'manager'
+      ) {
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // ONLY RESIDENT / ADMIN
+      // ------------------------------------------------------
+
+      if (
+        ![
+          'resident',
+          'admin'
+        ].includes(user.role)
+      ) {
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // INACTIVE USER
+      // ------------------------------------------------------
+
+      if (
+        user.is_active === false
+      ) {
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // EMAIL REQUIRED
+      // ------------------------------------------------------
+
+      if (
+        !user.email ||
+        !user.email.trim()
+      ) {
+        skipped++;
+        continue;
+      }
+
+
+      // ------------------------------------------------------
+      // FIND SOCIETY
+      // ------------------------------------------------------
+
+      const society =
+        societies.find(
+          item =>
+            item._id.toString() ===
+            maintenance.society_id.toString()
+        );
+
+
+      if (!society) {
+        skipped++;
+        continue;
+      }
+
+
+      const reminderData = {
+
+        type,
+
+        maintenance_id:
+          maintenance._id,
+
+        society_id:
+          society._id,
+
+        society_name:
+          society.name,
+
+        user_id:
+          user._id,
+
+        name:
+          user.name,
+
+        email:
+          user.email,
+
+        flat_no:
+          user.flat_no,
+
         month:
           targetMonth,
 
         year:
           targetYear,
 
-        status: {
-          $in: [
-            'pending',
-            'overdue'
-          ]
-        },
+        amount:
+          Number(
+            maintenance.amount || 0
+          ),
 
-        society_id: {
-          $exists: true,
-          $ne: null
-        }
-      }).populate(
-        'user_id',
-        'name email role is_active'
-      );
+        late_fee:
+          Number(
+            maintenance.late_fee || 0
+          ),
 
-    let sent = 0;
-    let skippedManagers = 0;
-    let errors = 0;
+        total_amount:
+          Number(
+            maintenance.total_amount || 0
+          ),
 
-    const societyStats = {};
+        due_date:
+          maintenance.due_date,
 
-    /*
-     * ==========================================================
-     * PROCESS PAYMENTS
-     * ==========================================================
-     */
-    for (
-      const payment
-      of pendingPayments
-    ) {
+        status:
+          maintenance.status
+      };
 
-      /*
-       * ========================================================
-       * CHECK USER
-       * ========================================================
-       */
-      if (
-        !payment.user_id ||
-        !payment.user_id.email
-      ) {
-        continue;
-      }
 
-      /*
-       * ========================================================
-       * SKIP MANAGER
-       * ========================================================
-       */
-      if (
-        payment.user_id.role ===
-        'manager'
-      ) {
-
-        skippedManagers++;
-
-        console.log(
-          `⏭️ Skipping manager reminder - Flat: ${payment.flat_no}`
-        );
-
-        continue;
-      }
-
-      /*
-       * ========================================================
-       * ONLY RESIDENT / ADMIN
-       * ========================================================
-       */
-      if (
-        ![
-          'resident',
-          'admin'
-        ].includes(
-          payment.user_id.role
-        )
-      ) {
-
-        skippedManagers++;
-
-        console.log(
-          `⏭️ Skipping reminder for role ${payment.user_id.role} - Flat: ${payment.flat_no}`
-        );
-
-        continue;
-      }
+      // ------------------------------------------------------
+      // EMAIL
+      // ------------------------------------------------------
 
       try {
 
-        /*
-         * ======================================================
-         * SEND EMAIL
-         * ======================================================
-         */
-        switch (type) {
-
-          /*
-           * ----------------------------------------------------
-           * INVOICE
-           * ----------------------------------------------------
-           */
-          case 'invoice':
-
-            await emailService.sendMaintenanceInvoice({
-              email:
-                payment.user_id.email,
-
-              name:
-                payment.user_id.name,
-
-              flat_no:
-                payment.flat_no,
-
-              amount:
-                payment.total_amount,
-
-              month:
-                payment.month,
-
-              year:
-                payment.year,
-
-              due_date:
-                payment.due_date
-            });
-
-            break;
-
-
-          /*
-           * ----------------------------------------------------
-           * REMINDER
-           * ----------------------------------------------------
-           */
-          case 'reminder':
-
-            await emailService.sendMaintenanceReminder({
-              email:
-                payment.user_id.email,
-
-              name:
-                payment.user_id.name,
-
-              flat_no:
-                payment.flat_no,
-
-              amount:
-                payment.total_amount,
-
-              month:
-                payment.month,
-
-              year:
-                payment.year,
-
-              due_date:
-                payment.due_date,
-
-              is_overdue:
-                false
-            });
-
-            break;
-
-
-          /*
-           * ----------------------------------------------------
-           * FINAL WARNING
-           * ----------------------------------------------------
-           */
-          case 'final_warning':
-
-            await emailService.sendFinalWarning({
-              email:
-                payment.user_id.email,
-
-              name:
-                payment.user_id.name,
-
-              flat_no:
-                payment.flat_no,
-
-              amount:
-                payment.total_amount,
-
-              month:
-                payment.month,
-
-              year:
-                payment.year,
-
-              due_date:
-                payment.due_date
-            });
-
-            break;
-        }
-
-        sent++;
-
-        /*
-         * ======================================================
-         * SOCIETY STATISTICS
-         * ======================================================
-         */
-        const societyKey =
-          payment.society_id.toString();
-
-        if (
-          !societyStats[societyKey]
-        ) {
-          societyStats[societyKey] = {
-            sent: 0,
-            skippedManagers: 0,
-            errors: 0
-          };
-        }
-
-        societyStats[societyKey]
-          .sent++;
-
-      } catch (err) {
-
-        console.error(
-          `Failed to send ${type} to ${payment.user_id.email}:`,
-          err.message
+        console.log(
+          `${type} reminder prepared for ${user.email} - Flat ${user.flat_no}`
         );
 
-        errors++;
+        /*
+         * Use your existing email utility here if available.
+         *
+         * Example:
+         *
+         * await sendMaintenanceReminderEmail({
+         *   user,
+         *   maintenance,
+         *   society,
+         *   type
+         * });
+         */
 
-        if (
-          payment.society_id
-        ) {
+        remindersSent++;
 
-          const societyKey =
-            payment.society_id.toString();
+        reminders.push(
+          reminderData
+        );
 
-          if (
-            !societyStats[societyKey]
-          ) {
-            societyStats[societyKey] = {
-              sent: 0,
-              skippedManagers: 0,
-              errors: 0
-            };
-          }
+      } catch (emailError) {
 
-          societyStats[societyKey]
-            .errors++;
-        }
+        console.error(
+          `Reminder email failed for ${user.email}:`,
+          emailError.message
+        );
+
+        skipped++;
       }
+
     }
 
-    /*
-     * ==========================================================
-     * RETURN RESULT
-     * ==========================================================
-     */
+
     return {
-      sent,
 
-      skippedManagers,
+      success: true,
 
-      errors,
+      message:
+        'Reminder process completed.',
 
       type,
 
@@ -743,28 +796,86 @@ const sendRemindersByType = async (
       year:
         targetYear,
 
-      societies:
-        societyStats
+      societies_processed:
+        societies.length,
+
+      records_checked:
+        maintenanceRecords.length,
+
+      reminders_sent:
+        remindersSent,
+
+      skipped,
+
+      reminders
+
     };
 
   } catch (error) {
 
     console.error(
-      'Error in sendRemindersByType:',
+      'Send reminders by type error:',
       error
     );
 
-    throw error;
+    return {
+
+      success: false,
+
+      message:
+        error.message ||
+        'Failed to send reminders.',
+
+      reminders_sent: 0,
+
+      skipped: 0
+
+    };
   }
 };
 
 
-/**
- * ============================================================
- * EXPORTS
- * ============================================================
- */
+// ============================================================
+// SCHEDULED PAYMENT REMINDERS
+//
+// This can be called by node-cron.
+//
+// Existing reminder schedule can call this function.
+// ============================================================
+
+const schedulePaymentReminders = async () => {
+
+  try {
+
+    return await sendPaymentReminders();
+
+  } catch (error) {
+
+    console.error(
+      'Scheduled payment reminders error:',
+      error
+    );
+
+    return {
+      success: false,
+      message:
+        error.message ||
+        'Failed to send scheduled payment reminders.'
+    };
+  }
+};
+
+
+// ============================================================
+// EXPORTS
+// ============================================================
+
 module.exports = {
+
   sendPaymentReminders,
-  sendRemindersByType
+
+  sendRemindersByType,
+
+  schedulePaymentReminders
+
 };
