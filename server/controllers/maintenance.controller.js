@@ -4,22 +4,20 @@ const PaymentLog = require('../models/PaymentLog');
 const User = require('../models/User');
 const razorpay = require('../config/razorpay');
 
-/**
- * Helper
- */
 const getSocietyId = (req) => {
   return req.user?.society_id || null;
 };
 
-/**
- * ============================================================
- * GET CURRENT USER MAINTENANCE
- * ============================================================
- */
 exports.getUserMaintenance = async (req, res, next) => {
   try {
-    const { status, year } = req.query;
+    if (req.user?.role === 'manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Managers do not have personal maintenance dues'
+      });
+    }
 
+    const { status, year } = req.query;
     const societyId = getSocietyId(req);
 
     if (!societyId) {
@@ -57,30 +55,36 @@ exports.getUserMaintenance = async (req, res, next) => {
       count: maintenance.length,
       data: maintenance
     });
-
   } catch (error) {
     console.error(
       'Error fetching user maintenance:',
       error
     );
-
     next(error);
   }
 };
 
-/**
- * ============================================================
- * GET CURRENT MONTH MAINTENANCE
- * ============================================================
- */
-exports.getCurrentMonthStatus = async (req, res, next) => {
+exports.getCurrentMonthStatus = async (
+  req,
+  res,
+  next
+) => {
   try {
+    if (req.user?.role === 'manager') {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Managers do not have personal maintenance dues'
+      });
+    }
+
     const societyId = getSocietyId(req);
 
     if (!societyId) {
       return res.status(400).json({
         success: false,
-        message: 'User is not assigned to any society'
+        message:
+          'User is not assigned to any society'
       });
     }
 
@@ -103,7 +107,6 @@ exports.getCurrentMonthStatus = async (req, res, next) => {
       }).lean();
 
     if (!maintenance) {
-
       if (!req.user.flat_no) {
         return res.status(400).json({
           success: false,
@@ -112,15 +115,13 @@ exports.getCurrentMonthStatus = async (req, res, next) => {
         });
       }
 
-      const dueDate =
-        new Date(
-          currentYear,
-          currentMonth - 1,
-          18
-        );
+      const dueDate = new Date(
+        currentYear,
+        currentMonth - 1,
+        18
+      );
 
       try {
-
         const created =
           await Maintenance.create({
             society_id: societyId,
@@ -136,13 +137,8 @@ exports.getCurrentMonthStatus = async (req, res, next) => {
 
         maintenance =
           created.toObject();
-
       } catch (createError) {
-
-        if (
-          createError?.code === 11000
-        ) {
-
+        if (createError?.code === 11000) {
           maintenance =
             await Maintenance.findOne({
               society_id: societyId,
@@ -150,7 +146,6 @@ exports.getCurrentMonthStatus = async (req, res, next) => {
               month: currentMonth,
               year: currentYear
             }).lean();
-
         } else {
           throw createError;
         }
@@ -161,25 +156,28 @@ exports.getCurrentMonthStatus = async (req, res, next) => {
       success: true,
       data: maintenance
     });
-
   } catch (error) {
-
     console.error(
       'Error fetching current month status:',
       error
     );
-
     next(error);
   }
 };
 
-/**
- * ============================================================
- * GET PAYMENT HISTORY
- * ============================================================
- */
-exports.getPaymentHistory = async (req, res, next) => {
+exports.getPaymentHistory = async (
+  req,
+  res,
+  next
+) => {
   try {
+    if (req.user?.role === 'manager') {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Managers do not have personal maintenance payment history'
+      });
+    }
 
     const {
       page = 1,
@@ -197,20 +195,18 @@ exports.getPaymentHistory = async (req, res, next) => {
       });
     }
 
-    const pageNumber =
-      Math.max(
-        parseInt(page) || 1,
-        1
-      );
+    const pageNumber = Math.max(
+      parseInt(page) || 1,
+      1
+    );
 
-    const limitNumber =
-      Math.min(
-        Math.max(
-          parseInt(limit) || 10,
-          1
-        ),
-        100
-      );
+    const limitNumber = Math.min(
+      Math.max(
+        parseInt(limit) || 10,
+        1
+      ),
+      100
+    );
 
     const skip =
       (pageNumber - 1) *
@@ -233,7 +229,6 @@ exports.getPaymentHistory = async (req, res, next) => {
       payments,
       total
     ] = await Promise.all([
-
       PaymentLog.find(paymentFilter)
         .sort({
           payment_date: -1
@@ -245,7 +240,6 @@ exports.getPaymentHistory = async (req, res, next) => {
       PaymentLog.countDocuments(
         paymentFilter
       )
-
     ]);
 
     return res.status(200).json({
@@ -253,44 +247,29 @@ exports.getPaymentHistory = async (req, res, next) => {
       data: payments,
       pagination: {
         current: pageNumber,
-        pages: Math.ceil(
-          total / limitNumber
-        ),
+        pages:
+          Math.ceil(
+            total / limitNumber
+          ),
         total,
         limit: limitNumber
       }
     });
-
   } catch (error) {
-
     console.error(
       'Error fetching payment history:',
       error
     );
-
     next(error);
   }
 };
 
-/**
- * ============================================================
- * GET ALL MAINTENANCE
- *
- * SUPER ADMIN:
- *   - Can see all societies
- *   - Can filter by society_id
- *
- * MANAGER / ADMIN:
- *   - Can see only their own society
- * ============================================================
- */
 exports.getAllMaintenance = async (
   req,
   res,
   next
 ) => {
   try {
-
     const {
       page = 1,
       limit = 20,
@@ -303,309 +282,16 @@ exports.getAllMaintenance = async (
     } = req.query;
 
     const isSuperAdmin =
-      req.user?.role === 'super_admin';
+      req.user?.role ===
+      'super_admin';
 
     const ownSocietyId =
       getSocietyId(req);
 
     const filter = {};
 
-    /**
-     * --------------------------------------------------------
-     * SOCIETY FILTER
-     * --------------------------------------------------------
-     */
-
     if (isSuperAdmin) {
-
       if (society_id) {
-
-        if (
-          !mongoose.Types.ObjectId.isValid(
-            society_id
-          )
-        ) {
-          return res.status(400).json({
-            success: false,
-            message: 'Invalid society ID'
-          });
-        }
-
-        filter.society_id =
-          new mongoose.Types.ObjectId(
-            society_id
-          );
-      }
-
-    } else {
-
-      if (!ownSocietyId) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'User is not assigned to any society'
-        });
-      }
-
-      if (
-        !mongoose.Types.ObjectId.isValid(
-          ownSocietyId
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'Invalid society ID'
-        });
-      }
-
-      filter.society_id =
-        new mongoose.Types.ObjectId(
-          ownSocietyId
-        );
-    }
-
-    /**
-     * --------------------------------------------------------
-     * PAGINATION
-     * --------------------------------------------------------
-     */
-
-    const pageNumber =
-      Math.max(
-        parseInt(page) || 1,
-        1
-      );
-
-    const limitNumber =
-      Math.min(
-        Math.max(
-          parseInt(limit) || 20,
-          1
-        ),
-        100
-      );
-
-    const skip =
-      (pageNumber - 1) *
-      limitNumber;
-
-    /**
-     * --------------------------------------------------------
-     * STATUS
-     * --------------------------------------------------------
-     */
-
-    if (
-      status &&
-      ['pending', 'paid', 'overdue'].includes(status)
-    ) {
-      filter.status = status;
-    }
-
-    /**
-     * --------------------------------------------------------
-     * MONTH
-     * --------------------------------------------------------
-     */
-
-    if (month) {
-      filter.month =
-        parseInt(month);
-    }
-
-    /**
-     * --------------------------------------------------------
-     * YEAR
-     * --------------------------------------------------------
-     */
-
-    if (year) {
-      filter.year =
-        parseInt(year);
-    }
-
-    /**
-     * --------------------------------------------------------
-     * FLAT
-     * --------------------------------------------------------
-     */
-
-    if (flat_no) {
-      filter.flat_no =
-        flat_no;
-    }
-
-    /**
-     * --------------------------------------------------------
-     * SORT
-     * --------------------------------------------------------
-     */
-
-    const sortObj = {};
-
-    if (sort.startsWith('-')) {
-      sortObj[
-        sort.substring(1)
-      ] = -1;
-    } else {
-      sortObj[sort] = 1;
-    }
-
-    /**
-     * --------------------------------------------------------
-     * FETCH
-     * --------------------------------------------------------
-     */
-
-    const [
-      maintenance,
-      total
-    ] = await Promise.all([
-
-      Maintenance.find(filter)
-        .populate(
-          'user_id',
-          'name email phone flat_no role'
-        )
-        .populate(
-          'society_id',
-          'name society_code city state'
-        )
-        .sort(sortObj)
-        .skip(skip)
-        .limit(limitNumber)
-        .lean(),
-
-      Maintenance.countDocuments(
-        filter
-      )
-
-    ]);
-
-    return res.status(200).json({
-      success: true,
-      data: maintenance,
-      pagination: {
-        current: pageNumber,
-        pages: Math.ceil(
-          total / limitNumber
-        ),
-        total,
-        limit: limitNumber
-      }
-    });
-
-  } catch (error) {
-
-    console.error(
-      'Error fetching all maintenance:',
-      error
-    );
-
-    next(error);
-  }
-};
-
-/**
- * ============================================================
- * GET PAYMENT STATISTICS
- *
- * SUPER ADMIN:
- *   - All societies when society_id is not provided
- *   - One society when society_id is provided
- *
- * MANAGER / ADMIN:
- *   - Own society only
- * ============================================================
- */
-exports.getPaymentStats = async (
-  req,
-  res,
-  next
-) => {
-  try {
-
-    const {
-      month,
-      year,
-      society_id
-    } = req.query;
-
-    const isSuperAdmin =
-      req.user?.role === 'super_admin';
-
-    const ownSocietyId =
-      getSocietyId(req);
-
-    const now = new Date();
-
-    const targetMonth =
-      month
-        ? parseInt(month)
-        : now.getMonth() + 1;
-
-    const targetYear =
-      year
-        ? parseInt(year)
-        : now.getFullYear();
-
-    /**
-     * --------------------------------------------------------
-     * VALIDATE MONTH
-     * --------------------------------------------------------
-     */
-
-    if (
-      isNaN(targetMonth) ||
-      targetMonth < 1 ||
-      targetMonth > 12
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid month'
-      });
-    }
-
-    /**
-     * --------------------------------------------------------
-     * VALIDATE YEAR
-     * --------------------------------------------------------
-     */
-
-    if (
-      isNaN(targetYear)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid year'
-      });
-    }
-
-    /**
-     * --------------------------------------------------------
-     * FILTER
-     * --------------------------------------------------------
-     */
-
-    const filter = {
-      month: targetMonth,
-      year: targetYear
-    };
-
-    /**
-     * --------------------------------------------------------
-     * SUPER ADMIN
-     * --------------------------------------------------------
-     */
-
-    if (isSuperAdmin) {
-
-      /**
-       * Specific society selected
-       */
-      if (society_id) {
-
         if (
           !mongoose.Types.ObjectId.isValid(
             society_id
@@ -618,34 +304,10 @@ exports.getPaymentStats = async (
           });
         }
 
-        /**
-         * IMPORTANT:
-         *
-         * MongoDB aggregate() does NOT automatically
-         * convert string ObjectId values.
-         *
-         * Therefore explicitly convert society_id
-         * to ObjectId.
-         */
         filter.society_id =
-          new mongoose.Types.ObjectId(
-            society_id
-          );
+          society_id;
       }
-
-      /**
-       * If society_id is not provided,
-       * Super Admin gets all societies.
-       */
-
     } else {
-
-      /**
-       * ------------------------------------------------------
-       * MANAGER / ADMIN
-       * ------------------------------------------------------
-       */
-
       if (!ownSocietyId) {
         return res.status(400).json({
           success: false,
@@ -654,269 +316,305 @@ exports.getPaymentStats = async (
         });
       }
 
-      if (
-        !mongoose.Types.ObjectId.isValid(
-          ownSocietyId
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            'Invalid society ID'
-        });
-      }
-
       filter.society_id =
-        new mongoose.Types.ObjectId(
-          ownSocietyId
-        );
+        ownSocietyId;
     }
 
-    /**
-     * ========================================================
-     * AGGREGATE PAYMENT STATUS
-     * ========================================================
-     */
+    if (
+      status &&
+      ['pending', 'paid', 'overdue'].includes(
+        status
+      )
+    ) {
+      filter.status = status;
+    }
+
+    if (month) {
+      filter.month =
+        parseInt(month);
+    }
+
+    if (year) {
+      filter.year =
+        parseInt(year);
+    }
+
+    if (flat_no) {
+      filter.flat_no = flat_no;
+    }
+
+    const pageNumber = Math.max(
+      parseInt(page) || 1,
+      1
+    );
+
+    const limitNumber = Math.min(
+      Math.max(
+        parseInt(limit) || 20,
+        1
+      ),
+      100
+    );
+
+    const skip =
+      (pageNumber - 1) *
+      limitNumber;
 
     const [
-      stats,
-      totals
+      maintenance,
+      total
     ] = await Promise.all([
+      Maintenance.find(filter)
+        .populate(
+          'user_id',
+          'name email flat_no phone role'
+        )
+        .populate(
+          'society_id',
+          'name society_code'
+        )
+        .sort(sort)
+        .skip(skip)
+        .limit(limitNumber)
+        .lean(),
 
-      /**
-       * STATUS WISE
-       */
-      Maintenance.aggregate([
-
-        {
-          $match: filter
-        },
-
-        {
-          $group: {
-
-            _id:
-              '$status',
-
-            count: {
-              $sum: 1
-            },
-
-            totalAmount: {
-              $sum:
-                '$total_amount'
-            }
-
-          }
-        }
-
-      ]),
-
-      /**
-       * TOTALS
-       */
-      Maintenance.aggregate([
-
-        {
-          $match: filter
-        },
-
-        {
-          $group: {
-
-            _id: null,
-
-            totalFlats: {
-              $sum: 1
-            },
-
-            totalExpected: {
-              $sum: '$amount'
-            },
-
-            totalCollected: {
-
-              $sum: {
-
-                $cond: [
-
-                  {
-                    $eq: [
-                      '$status',
-                      'paid'
-                    ]
-                  },
-
-                  '$total_amount',
-
-                  0
-
-                ]
-
-              }
-
-            },
-
-            totalPending: {
-
-              $sum: {
-
-                $cond: [
-
-                  {
-                    $ne: [
-                      '$status',
-                      'paid'
-                    ]
-                  },
-
-                  '$total_amount',
-
-                  0
-
-                ]
-
-              }
-
-            }
-
-          }
-        }
-
-      ])
-
+      Maintenance.countDocuments(
+        filter
+      )
     ]);
 
-    /**
-     * ========================================================
-     * DEFAULT STATUS DATA
-     * ========================================================
-     */
-
-    const statsByStatus = {
-
-      paid: {
-        count: 0,
-        totalAmount: 0
-      },
-
-      pending: {
-        count: 0,
-        totalAmount: 0
-      },
-
-      overdue: {
-        count: 0,
-        totalAmount: 0
-      }
-
-    };
-
-    /**
-     * ========================================================
-     * MAP STATUS DATA
-     * ========================================================
-     */
-
-    stats.forEach(
-      (stat) => {
-
-        if (
-          statsByStatus[
-            stat._id
-          ]
-        ) {
-
-          statsByStatus[
-            stat._id
-          ] = {
-
-            count:
-              stat.count,
-
-            totalAmount:
-              stat.totalAmount
-
-          };
-
-        }
-
-      }
-    );
-
-    /**
-     * ========================================================
-     * RESPONSE
-     * ========================================================
-     */
-
     return res.status(200).json({
-
       success: true,
-
-      data: {
-
-        society_id:
-          isSuperAdmin
-            ? society_id || null
-            : ownSocietyId,
-
-        all_societies:
-          isSuperAdmin &&
-          !society_id,
-
-        month:
-          targetMonth,
-
-        year:
-          targetYear,
-
-        byStatus:
-          statsByStatus,
-
-        totals:
-          totals[0] || {
-
-            totalFlats: 0,
-
-            totalExpected: 0,
-
-            totalCollected: 0,
-
-            totalPending: 0
-
-          }
-
+      data: maintenance,
+      pagination: {
+        current: pageNumber,
+        pages:
+          Math.ceil(
+            total / limitNumber
+          ),
+        total,
+        limit: limitNumber
       }
-
     });
-
   } catch (error) {
-
     console.error(
-      'Error fetching payment stats:',
+      'Error fetching all maintenance:',
       error
     );
-
     next(error);
   }
 };
 
-/**
- * ============================================================
- * CREATE RAZORPAY ORDER
- * ============================================================
- */
+exports.getPaymentStats = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const {
+      month,
+      year,
+      society_id
+    } = req.query;
+
+    const isSuperAdmin =
+      req.user?.role ===
+      'super_admin';
+
+    const ownSocietyId =
+      getSocietyId(req);
+
+    const filter = {};
+
+    if (isSuperAdmin) {
+      if (society_id) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            society_id
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Invalid society ID'
+          });
+        }
+
+        filter.society_id =
+          society_id;
+      }
+    } else {
+      if (!ownSocietyId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'User is not assigned to any society'
+        });
+      }
+
+      filter.society_id =
+        ownSocietyId;
+    }
+
+    if (month) {
+      filter.month =
+        parseInt(month);
+    }
+
+    if (year) {
+      filter.year =
+        parseInt(year);
+    }
+
+    const [
+      totalRecords,
+      paidRecords,
+      pendingRecords,
+      overdueRecords
+    ] = await Promise.all([
+      Maintenance.countDocuments(
+        filter
+      ),
+
+      Maintenance.countDocuments({
+        ...filter,
+        status: 'paid'
+      }),
+
+      Maintenance.countDocuments({
+        ...filter,
+        status: 'pending'
+      }),
+
+      Maintenance.countDocuments({
+        ...filter,
+        status: 'overdue'
+      })
+    ]);
+
+    const amountStats =
+      await Maintenance.aggregate([
+        {
+          $match: filter
+        },
+        {
+          $group: {
+            _id: '$status',
+            totalAmount: {
+              $sum: '$total_amount'
+            },
+            amount: {
+              $sum: '$amount'
+            },
+            lateFee: {
+              $sum: '$late_fee'
+            }
+          }
+        }
+      ]);
+
+    const stats = {
+      total: totalRecords,
+      paid: paidRecords,
+      pending: pendingRecords,
+      overdue: overdueRecords,
+      total_amount: 0,
+      paid_amount: 0,
+      pending_amount: 0,
+      overdue_amount: 0,
+      total_late_fee: 0
+    };
+
+    amountStats.forEach(
+      (item) => {
+        const totalAmount =
+          item.totalAmount || 0;
+
+        const amount =
+          item.amount || 0;
+
+        const lateFee =
+          item.lateFee || 0;
+
+        stats.total_amount +=
+          totalAmount;
+
+        stats.total_late_fee +=
+          lateFee;
+
+        if (
+          item._id === 'paid'
+        ) {
+          stats.paid_amount =
+            totalAmount;
+        }
+
+        if (
+          item._id === 'pending'
+        ) {
+          stats.pending_amount =
+            totalAmount;
+        }
+
+        if (
+          item._id === 'overdue'
+        ) {
+          stats.overdue_amount =
+            totalAmount;
+        }
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error(
+      'Error fetching payment stats:',
+      error
+    );
+    next(error);
+  }
+};
+
 exports.createOrder = async (
   req,
   res,
   next
 ) => {
   try {
+    if (req.user?.role === 'manager') {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Managers do not have personal maintenance payments'
+      });
+    }
 
     const {
       maintenance_id
     } = req.body;
+
+    if (!maintenance_id) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Maintenance ID is required'
+      });
+    }
+
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        maintenance_id
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid maintenance ID'
+      });
+    }
 
     const societyId =
       getSocietyId(req);
@@ -929,18 +627,11 @@ exports.createOrder = async (
       });
     }
 
-    if (!maintenance_id) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Maintenance ID is required'
-      });
-    }
-
     const maintenance =
       await Maintenance.findOne({
         _id: maintenance_id,
-        society_id: societyId
+        society_id: societyId,
+        user_id: req.user._id
       });
 
     if (!maintenance) {
@@ -952,62 +643,49 @@ exports.createOrder = async (
     }
 
     if (
-      maintenance.status === 'paid'
+      maintenance.status ===
+      'paid'
     ) {
       return res.status(400).json({
         success: false,
         message:
-          'This maintenance has already been paid'
+          'Maintenance is already paid'
       });
     }
 
-    if (
-      maintenance.user_id.toString() !==
-      req.user._id.toString()
-    ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          'You are not authorized to pay this maintenance'
-      });
-    }
+    const amount =
+      Math.round(
+        maintenance.total_amount * 100
+      );
 
-    const options = {
-      amount:
-        maintenance.total_amount * 100,
-
-      currency: 'INR',
-
-      receipt:
-        `maint_${maintenance._id}`,
-
-      notes: {
-
-        maintenance_id:
-          maintenance._id.toString(),
-
-        society_id:
-          societyId.toString(),
-
-        flat_no:
-          maintenance.flat_no,
-
-        month:
-          maintenance.month,
-
-        year:
-          maintenance.year,
-
-        user_id:
-          req.user._id.toString()
-
-      }
-    };
+    const receipt =
+      `maintenance_${maintenance._id}_${Date.now()}`;
 
     const order =
-      await razorpay.orders.create(
-        options
-      );
+      await razorpay.orders.create({
+        amount,
+        currency: 'INR',
+        receipt,
+        notes: {
+          maintenance_id:
+            maintenance._id.toString(),
+
+          user_id:
+            req.user._id.toString(),
+
+          society_id:
+            societyId.toString(),
+
+          flat_no:
+            maintenance.flat_no,
+
+          month:
+            maintenance.month,
+
+          year:
+            maintenance.year
+        }
+      });
 
     maintenance.razorpay_order_id =
       order.id;
@@ -1015,302 +693,356 @@ exports.createOrder = async (
     await maintenance.save();
 
     return res.status(200).json({
-
       success: true,
-
       data: {
-
-        order_id:
-          order.id,
-
-        amount:
-          order.amount,
-
+        order_id: order.id,
+        amount: order.amount,
         currency:
           order.currency,
-
+        maintenance_id:
+          maintenance._id,
         key_id:
-          process.env.RAZORPAY_KEY_ID,
-
-        maintenance: {
-
-          id:
-            maintenance._id,
-
-          month:
-            maintenance.month,
-
-          year:
-            maintenance.year,
-
-          flat_no:
-            maintenance.flat_no,
-
-          total_amount:
-            maintenance.total_amount
-
-        },
-
-        prefill: {
-
-          name:
-            req.user.name,
-
-          email:
-            req.user.email,
-
-          contact:
-            req.user.phone
-
-        }
-
+          process.env.RAZORPAY_KEY_ID
       }
-
     });
-
   } catch (error) {
-
     console.error(
       'Error creating Razorpay order:',
       error
     );
-
     next(error);
   }
 };
 
-/**
- * ============================================================
- * GENERATE MONTHLY MAINTENANCE
- * ============================================================
- */
 exports.generateMonthlyMaintenance =
-  async (
-    req,
-    res,
-    next
-  ) => {
-
+  async (req, res, next) => {
     try {
-
       const {
         month,
-        year
+        year,
+        amount = 1000,
+        due_day = 18,
+        society_id
       } = req.body;
 
-      const societyId =
+      const isSuperAdmin =
+        req.user?.role ===
+        'super_admin';
+
+      let targetSocietyId =
+        society_id ||
         getSocietyId(req);
 
-      if (!societyId) {
+      if (
+        !targetSocietyId
+      ) {
         return res.status(400).json({
           success: false,
           message:
-            'User is not assigned to any society'
+            'Society ID is required'
         });
       }
 
-      const now = new Date();
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          targetSocietyId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid society ID'
+        });
+      }
+
+      if (
+        !isSuperAdmin &&
+        String(
+          targetSocietyId
+        ) !==
+          String(
+            getSocietyId(req)
+          )
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            'You can generate maintenance only for your society'
+        });
+      }
+
+      const now =
+        new Date();
 
       const targetMonth =
-        month
-          ? parseInt(month)
-          : now.getMonth() + 1;
+        month ||
+        now.getMonth() + 1;
 
       const targetYear =
-        year
-          ? parseInt(year)
-          : now.getFullYear();
+        year ||
+        now.getFullYear();
 
-      const users =
+      const targetAmount =
+        Number(amount);
+
+      const targetDueDay =
+        Number(due_day);
+
+      if (
+        targetMonth < 1 ||
+        targetMonth > 12
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Month must be between 1 and 12'
+        });
+      }
+
+      if (
+        !Number.isInteger(
+          targetYear
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid year'
+        });
+      }
+
+      if (
+        !Number.isFinite(
+          targetAmount
+        ) ||
+        targetAmount <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Maintenance amount must be greater than 0'
+        });
+      }
+
+      if (
+        targetDueDay < 1 ||
+        targetDueDay > 28
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Due day must be between 1 and 28'
+        });
+      }
+
+      const societyUsers =
         await User.find({
-
           society_id:
-            societyId,
+            targetSocietyId,
 
           role: {
             $in: [
               'resident',
-              'admin',
-              'manager'
+              'admin'
             ]
           },
 
-          is_active:
-            true
+          is_active: true,
 
-        }).select(
-          '_id flat_no role'
-        );
+          flat_no: {
+            $exists: true,
+            $ne: null,
+            $ne: ''
+          }
+        })
+          .select(
+            '_id flat_no name email role'
+          )
+          .lean();
+
+      if (
+        societyUsers.length ===
+        0
+      ) {
+        return res.status(200).json({
+          success: true,
+          message:
+            'No active residents or admins found for maintenance generation',
+          data: {
+            created: 0,
+            skipped: 0,
+            total_users: 0
+          }
+        });
+      }
 
       const dueDate =
         new Date(
           targetYear,
           targetMonth - 1,
-          18
+          targetDueDay,
+          23,
+          59,
+          59
         );
 
-      let created = 0;
+      const operations = [];
       let skipped = 0;
 
       for (
-        const user of users
+        const user
+        of societyUsers
       ) {
-
-        if (!user.flat_no) {
-          continue;
-        }
-
-        const exists =
-          await Maintenance.findOne({
-
-            society_id:
-              societyId,
-
-            user_id:
-              user._id,
-
-            month:
-              targetMonth,
-
-            year:
-              targetYear
-
-          });
-
-        if (!exists) {
-
-          try {
-
-            await Maintenance.create({
-
+        operations.push({
+          updateOne: {
+            filter: {
               society_id:
-                societyId,
+                targetSocietyId,
 
               user_id:
                 user._id,
-
-              flat_no:
-                user.flat_no,
 
               month:
                 targetMonth,
 
               year:
-                targetYear,
+                targetYear
+            },
 
-              amount:
-                1000,
+            update: {
+              $setOnInsert: {
+                society_id:
+                  targetSocietyId,
 
-              late_fee:
-                0,
+                user_id:
+                  user._id,
 
-              due_date:
-                dueDate,
+                flat_no:
+                  user.flat_no,
 
-              status:
-                'pending'
+                month:
+                  targetMonth,
 
-            });
+                year:
+                  targetYear,
 
-            created++;
+                amount:
+                  targetAmount,
 
-          } catch (error) {
+                late_fee: 0,
 
-            if (
-              error?.code === 11000
-            ) {
+                total_amount:
+                  targetAmount,
 
-              skipped++;
+                due_date:
+                  dueDate,
 
-            } else {
+                status:
+                  'pending'
+              }
+            },
 
-              throw error;
-
-            }
+            upsert: true
           }
+        });
+      }
 
-        } else {
+      if (
+        operations.length
+      ) {
+        const result =
+          await Maintenance.bulkWrite(
+            operations,
+            {
+              ordered: false
+            }
+          );
 
-          skipped++;
+        const created =
+          result.upsertedCount ||
+          0;
 
-        }
+        skipped =
+          societyUsers.length -
+          created;
+
+        return res.status(200).json({
+          success: true,
+          message:
+            'Monthly maintenance generated successfully',
+          data: {
+            created,
+            skipped,
+            total_users:
+              societyUsers.length,
+            month:
+              targetMonth,
+            year:
+              targetYear,
+            amount:
+              targetAmount,
+            due_date:
+              dueDate
+          }
+        });
       }
 
       return res.status(200).json({
-
         success: true,
-
         message:
-          `Maintenance records generated: ${created} created, ${skipped} skipped (already exist)`,
-
+          'No maintenance records generated',
         data: {
-
-          society_id:
-            societyId,
-
-          month:
-            targetMonth,
-
-          year:
-            targetYear,
-
-          created,
-          skipped
-
+          created: 0,
+          skipped,
+          total_users:
+            societyUsers.length
         }
-
       });
-
     } catch (error) {
-
       console.error(
-        'Error generating maintenance:',
+        'Error generating monthly maintenance:',
         error
       );
-
       next(error);
     }
   };
 
-/**
- * ============================================================
- * CRON JOBS
- * ============================================================
- */
-
-const {
-  generateMonthlyMaintenance:
-    generateMonthlyMaintenanceJob,
-
-  generateMaintenanceForMonth
-} = require('../jobs/maintenanceGenerator');
-
-const {
-  applyLateFees
-} = require('../jobs/lateFeeApplier');
-
-const {
-  sendRemindersByType
-} = require('../jobs/reminderSender');
-
-/**
- * ============================================================
- * MANUAL MAINTENANCE GENERATION
- * ============================================================
- */
 exports.triggerMaintenanceGeneration =
-  async (
-    req,
-    res,
-    next
-  ) => {
-
+  async (req, res, next) => {
     try {
+      const {
+        generateMonthlyMaintenance:
+          generateMonthlyMaintenanceJob,
+        generateMaintenanceForMonth
+      } =
+        require('../jobs/maintenanceGenerator');
 
       const {
         month,
-        year
-      } = req.body;
+        year,
+        society_id
+      } = req.body || {};
+
+      if (
+        society_id &&
+        req.user?.role !==
+          'super_admin'
+      ) {
+        if (
+          String(
+            society_id
+          ) !==
+          String(
+            getSocietyId(req)
+          )
+        ) {
+          return res.status(403).json({
+            success: false,
+            message:
+              'You can generate maintenance only for your society'
+          });
+        }
+      }
 
       let result;
 
@@ -1318,156 +1050,96 @@ exports.triggerMaintenanceGeneration =
         month &&
         year
       ) {
-
         result =
           await generateMaintenanceForMonth(
             parseInt(month),
-            parseInt(year)
+            parseInt(year),
+            society_id ||
+              getSocietyId(req)
           );
-
       } else {
-
         result =
-          await generateMonthlyMaintenanceJob();
-
+          await generateMonthlyMaintenanceJob(
+            society_id ||
+              getSocietyId(req)
+          );
       }
 
       return res.status(200).json({
-
         success: true,
-
         message:
-          'Maintenance generation completed',
-
-        data:
-          result
-
+          'Maintenance generation triggered successfully',
+        data: result
       });
-
     } catch (error) {
-
       console.error(
         'Error triggering maintenance generation:',
         error
       );
-
       next(error);
     }
   };
 
-/**
- * ============================================================
- * MANUAL LATE FEE
- * ============================================================
- */
 exports.triggerLateFeeApplication =
-  async (
-    req,
-    res,
-    next
-  ) => {
-
+  async (req, res, next) => {
     try {
-
-      const result =
-        await applyLateFees();
-
-      return res.status(200).json({
-
-        success: true,
-
-        message:
-          'Late fee application completed',
-
-        data:
-          result
-
-      });
-
-    } catch (error) {
-
-      console.error(
-        'Error triggering late fee application:',
-        error
-      );
-
-      next(error);
-    }
-  };
-
-/**
- * ============================================================
- * MANUAL REMINDERS
- * ============================================================
- */
-exports.triggerPaymentReminders =
-  async (
-    req,
-    res,
-    next
-  ) => {
-
-    try {
-
       const {
-        type = 'reminder',
-        month,
-        year
-      } = req.body;
-
-      const validTypes = [
-        'invoice',
-        'reminder',
-        'final_warning'
-      ];
-
-      if (
-        !validTypes.includes(type)
-      ) {
-
-        return res.status(400).json({
-
-          success: false,
-
-          message:
-            `Invalid reminder type. Must be one of: ${validTypes.join(', ')}`
-        });
-      }
+        applyLateFees
+      } =
+        require('../jobs/lateFeeApplier');
 
       const result =
-        await sendRemindersByType(
-
-          type,
-
-          month
-            ? parseInt(month)
-            : null,
-
-          year
-            ? parseInt(year)
-            : null
-
+        await applyLateFees(
+          getSocietyId(req)
         );
 
       return res.status(200).json({
-
         success: true,
-
         message:
-          `${type} reminders sent`,
-
-        data:
-          result
-
+          'Late fee application completed successfully',
+        data: result
       });
-
     } catch (error) {
-
       console.error(
-        'Error triggering payment reminders:',
+        'Error applying late fees:',
         error
       );
-
       next(error);
     }
   };
+
+exports.triggerPaymentReminders =
+  async (req, res, next) => {
+    try {
+      const {
+        sendRemindersByType
+      } =
+        require('../jobs/reminderSender');
+
+      const {
+        type = 'all'
+      } = req.body || {};
+
+      const result =
+        await sendRemindersByType(
+          type,
+          getSocietyId(req)
+        );
+
+      return res.status(200).json({
+        success: true,
+        message:
+          'Payment reminders sent successfully',
+        data: result
+      });
+    } catch (error) {
+      console.error(
+        'Error sending payment reminders:',
+        error
+      );
+      next(error);
+    }
+  };
+
+module.exports =
+  module.exports;

@@ -7,6 +7,15 @@ const emailService = require('../services/email.service');
  * ============================================================
  * GENERATE MAINTENANCE FOR ONE SOCIETY
  * ============================================================
+ *
+ * IMPORTANT:
+ * Manager does NOT receive personal maintenance.
+ *
+ * Maintenance is generated only for:
+ * - resident
+ * - admin
+ *
+ * Manager manages society maintenance.
  */
 const generateMaintenanceForSociety = async (
   societyId,
@@ -21,11 +30,14 @@ const generateMaintenanceForSociety = async (
   );
 
   /*
-   * IMPORTANT:
-   * Only active society users with a valid flat number
-   * will receive maintenance.
+   * ==========================================================
+   * GET USERS
+   * ==========================================================
    *
-   * Manager is included here.
+   * Only resident and admin receive
+   * personal maintenance.
+   *
+   * Manager is intentionally excluded.
    */
   const users = await User.find({
     society_id: societyId,
@@ -33,8 +45,7 @@ const generateMaintenanceForSociety = async (
     role: {
       $in: [
         'resident',
-        'admin',
-        'manager'
+        'admin'
       ]
     },
 
@@ -53,6 +64,11 @@ const generateMaintenanceForSociety = async (
   let skipped = 0;
   let errors = 0;
 
+  /*
+   * ==========================================================
+   * CREATE MAINTENANCE FOR EACH USER
+   * ==========================================================
+   */
   for (const user of users) {
     try {
 
@@ -60,9 +76,6 @@ const generateMaintenanceForSociety = async (
        * ======================================================
        * CHECK EXISTING MAINTENANCE
        * ======================================================
-       *
-       * Society + User + Month + Year
-       * are used so different societies remain separate.
        */
       const existing =
         await Maintenance.findOne({
@@ -149,8 +162,9 @@ const generateMaintenanceForSociety = async (
     } catch (err) {
 
       /*
-       * Duplicate record can happen if another process
-       * creates the same maintenance at the same time.
+       * ======================================================
+       * DUPLICATE RECORD
+       * ======================================================
        */
       if (
         err.code === 11000
@@ -165,6 +179,11 @@ const generateMaintenanceForSociety = async (
         continue;
       }
 
+      /*
+       * ======================================================
+       * OTHER ERROR
+       * ======================================================
+       */
       console.error(
         `Error creating maintenance for flat ${user.flat_no}:`,
         err.message
@@ -196,7 +215,9 @@ const generateMaintenanceForSociety = async (
  * GENERATE MONTHLY MAINTENANCE FOR ALL ACTIVE SOCIETIES
  * ============================================================
  *
- * Runs on 1st of every month.
+ * Runs automatically on 1st of every month.
+ *
+ * Manager is NOT included.
  */
 const generateMonthlyMaintenance =
   async () => {
@@ -217,7 +238,9 @@ const generateMonthlyMaintenance =
       );
 
       /*
-       * Only active societies.
+       * ======================================================
+       * GET ACTIVE SOCIETIES
+       * ======================================================
        */
       const societies =
         await Society.find({
@@ -239,7 +262,9 @@ const generateMonthlyMaintenance =
       const societyResults = [];
 
       /*
-       * Generate separately for every society.
+       * ======================================================
+       * PROCESS EACH SOCIETY
+       * ======================================================
        */
       for (
         const society of societies
@@ -345,6 +370,8 @@ const generateMonthlyMaintenance =
  * GENERATE MAINTENANCE FOR ALL ACTIVE SOCIETIES
  * FOR SPECIFIC MONTH/YEAR
  * ============================================================
+ *
+ * Manager is NOT included.
  */
 const generateMaintenanceForMonth =
   async (
@@ -377,7 +404,9 @@ const generateMaintenanceForMonth =
       );
 
       /*
-       * Only active societies.
+       * ======================================================
+       * GET ACTIVE SOCIETIES
+       * ======================================================
        */
       const societies =
         await Society.find({
@@ -399,7 +428,9 @@ const generateMaintenanceForMonth =
       const societyResults = [];
 
       /*
-       * Process each society separately.
+       * ======================================================
+       * PROCESS EACH SOCIETY
+       * ======================================================
        */
       for (
         const society of societies
@@ -488,6 +519,8 @@ const generateMaintenanceForMonth =
 
 module.exports = {
   generateMonthlyMaintenance,
+
   generateMaintenanceForMonth,
+
   generateMaintenanceForSociety
 };

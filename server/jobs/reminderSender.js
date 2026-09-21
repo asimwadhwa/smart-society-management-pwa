@@ -2,11 +2,20 @@ const Maintenance = require('../models/Maintenance');
 const emailService = require('../services/email.service');
 
 /**
- * Send payment reminders across all societies
+ * ============================================================
+ * SEND PAYMENT REMINDERS ACROSS ALL SOCIETIES
+ * ============================================================
  *
  * Day 1  -> Invoice
  * Day 10 -> Reminder
  * Day 16 -> Final Warning
+ *
+ * IMPORTANT:
+ * Manager does NOT have personal maintenance.
+ *
+ * Therefore reminders are sent only to:
+ * - resident
+ * - admin
  */
 const sendPaymentReminders = async () => {
   try {
@@ -27,6 +36,11 @@ const sendPaymentReminders = async () => {
 
     let reminderType = null;
 
+    /*
+     * ==========================================================
+     * DETERMINE REMINDER TYPE
+     * ==========================================================
+     */
     if (currentDay === 1) {
       reminderType = 'invoice';
     } else if (currentDay === 10) {
@@ -42,6 +56,7 @@ const sendPaymentReminders = async () => {
 
       return {
         sent: 0,
+        skippedManagers: 0,
         errors: 0,
         type: null
       };
@@ -51,9 +66,20 @@ const sendPaymentReminders = async () => {
       `📧 Sending ${reminderType} emails across all societies...`
     );
 
+    /*
+     * ==========================================================
+     * GET PENDING PAYMENTS
+     * ==========================================================
+     *
+     * Manager is NOT filtered here by MongoDB directly because
+     * user role is stored in User collection.
+     *
+     * We populate user_id with role and check it below.
+     */
     const pendingPayments =
       await Maintenance.find({
         month: currentMonth,
+
         year: currentYear,
 
         status: {
@@ -69,19 +95,34 @@ const sendPaymentReminders = async () => {
         }
       }).populate(
         'user_id',
-        'name email'
+        'name email role is_active'
       );
 
     console.log(
-      `Found ${pendingPayments.length} pending payments`
+      `Found ${pendingPayments.length} pending maintenance records`
     );
 
     let sent = 0;
+    let skippedManagers = 0;
     let errors = 0;
 
     const societyStats = {};
 
-    for (const payment of pendingPayments) {
+    /*
+     * ==========================================================
+     * SEND REMINDERS
+     * ==========================================================
+     */
+    for (
+      const payment
+      of pendingPayments
+    ) {
+
+      /*
+       * ========================================================
+       * CHECK USER
+       * ========================================================
+       */
       if (
         !payment.user_id ||
         !payment.user_id.email
@@ -89,9 +130,64 @@ const sendPaymentReminders = async () => {
         continue;
       }
 
+      /*
+       * ========================================================
+       * MANAGER CHECK
+       * ========================================================
+       *
+       * Old Manager maintenance records will be ignored.
+       */
+      if (
+        payment.user_id.role ===
+        'manager'
+      ) {
+
+        skippedManagers++;
+
+        console.log(
+          `⏭️ Skipping reminder for manager - Flat: ${payment.flat_no}`
+        );
+
+        continue;
+      }
+
+      /*
+       * ========================================================
+       * ONLY RESIDENT / ADMIN
+       * ========================================================
+       */
+      if (
+        ![
+          'resident',
+          'admin'
+        ].includes(
+          payment.user_id.role
+        )
+      ) {
+
+        skippedManagers++;
+
+        console.log(
+          `⏭️ Skipping reminder for role ${payment.user_id.role} - Flat: ${payment.flat_no}`
+        );
+
+        continue;
+      }
+
       try {
+
+        /*
+         * ======================================================
+         * SEND EMAIL BASED ON TYPE
+         * ======================================================
+         */
         switch (reminderType) {
 
+          /*
+           * ----------------------------------------------------
+           * INVOICE
+           * ----------------------------------------------------
+           */
           case 'invoice':
 
             await emailService.sendMaintenanceInvoice({
@@ -120,6 +216,11 @@ const sendPaymentReminders = async () => {
             break;
 
 
+          /*
+           * ----------------------------------------------------
+           * NORMAL REMINDER
+           * ----------------------------------------------------
+           */
           case 'reminder':
 
             await emailService.sendMaintenanceReminder({
@@ -144,12 +245,18 @@ const sendPaymentReminders = async () => {
               due_date:
                 payment.due_date,
 
-              is_overdue: false
+              is_overdue:
+                false
             });
 
             break;
 
 
+          /*
+           * ----------------------------------------------------
+           * FINAL WARNING
+           * ----------------------------------------------------
+           */
           case 'final_warning':
 
             await emailService.sendFinalWarning({
@@ -180,17 +287,26 @@ const sendPaymentReminders = async () => {
 
         sent++;
 
+        /*
+         * ======================================================
+         * SOCIETY STATISTICS
+         * ======================================================
+         */
         const societyKey =
           payment.society_id.toString();
 
-        if (!societyStats[societyKey]) {
+        if (
+          !societyStats[societyKey]
+        ) {
           societyStats[societyKey] = {
             sent: 0,
+            skippedManagers: 0,
             errors: 0
           };
         }
 
-        societyStats[societyKey].sent++;
+        societyStats[societyKey]
+          .sent++;
 
         console.log(
           `✅ Sent ${reminderType} to ${payment.user_id.email}`
@@ -205,22 +321,39 @@ const sendPaymentReminders = async () => {
 
         errors++;
 
-        if (payment.society_id) {
+        /*
+         * ======================================================
+         * SOCIETY ERROR STATISTICS
+         * ======================================================
+         */
+        if (
+          payment.society_id
+        ) {
+
           const societyKey =
             payment.society_id.toString();
 
-          if (!societyStats[societyKey]) {
+          if (
+            !societyStats[societyKey]
+          ) {
             societyStats[societyKey] = {
               sent: 0,
+              skippedManagers: 0,
               errors: 0
             };
           }
 
-          societyStats[societyKey].errors++;
+          societyStats[societyKey]
+            .errors++;
         }
       }
     }
 
+    /*
+     * ==========================================================
+     * SUMMARY
+     * ==========================================================
+     */
     console.log(
       `📊 Reminder sending complete`
     );
@@ -234,16 +367,31 @@ const sendPaymentReminders = async () => {
     );
 
     console.log(
+      `   Manager records skipped: ${skippedManagers}`
+    );
+
+    console.log(
       `   Errors: ${errors}`
     );
 
     return {
       sent,
+
+      skippedManagers,
+
       errors,
-      type: reminderType,
-      month: currentMonth,
-      year: currentYear,
-      societies: societyStats
+
+      type:
+        reminderType,
+
+      month:
+        currentMonth,
+
+      year:
+        currentYear,
+
+      societies:
+        societyStats
     };
 
   } catch (error) {
@@ -259,12 +407,16 @@ const sendPaymentReminders = async () => {
 
 
 /**
- * Send reminders for a specific type
+ * ============================================================
+ * SEND REMINDERS FOR SPECIFIC TYPE
+ * ============================================================
  *
  * type:
- * invoice
- * reminder
- * final_warning
+ * - invoice
+ * - reminder
+ * - final_warning
+ *
+ * Manager is excluded.
  */
 const sendRemindersByType = async (
   type,
@@ -283,13 +435,20 @@ const sendRemindersByType = async (
       year ||
       now.getFullYear();
 
+    /*
+     * ==========================================================
+     * VALIDATE TYPE
+     * ==========================================================
+     */
     const validTypes = [
       'invoice',
       'reminder',
       'final_warning'
     ];
 
-    if (!validTypes.includes(type)) {
+    if (
+      !validTypes.includes(type)
+    ) {
       throw new Error(
         `Unknown reminder type: ${type}`
       );
@@ -299,10 +458,18 @@ const sendRemindersByType = async (
       `📧 Manually sending ${type} emails for ${targetMonth}/${targetYear} across all societies...`
     );
 
+    /*
+     * ==========================================================
+     * GET PENDING PAYMENTS
+     * ==========================================================
+     */
     const pendingPayments =
       await Maintenance.find({
-        month: targetMonth,
-        year: targetYear,
+        month:
+          targetMonth,
+
+        year:
+          targetYear,
 
         status: {
           $in: [
@@ -317,16 +484,30 @@ const sendRemindersByType = async (
         }
       }).populate(
         'user_id',
-        'name email'
+        'name email role is_active'
       );
 
     let sent = 0;
+    let skippedManagers = 0;
     let errors = 0;
 
     const societyStats = {};
 
-    for (const payment of pendingPayments) {
+    /*
+     * ==========================================================
+     * PROCESS PAYMENTS
+     * ==========================================================
+     */
+    for (
+      const payment
+      of pendingPayments
+    ) {
 
+      /*
+       * ========================================================
+       * CHECK USER
+       * ========================================================
+       */
       if (
         !payment.user_id ||
         !payment.user_id.email
@@ -334,10 +515,62 @@ const sendRemindersByType = async (
         continue;
       }
 
+      /*
+       * ========================================================
+       * SKIP MANAGER
+       * ========================================================
+       */
+      if (
+        payment.user_id.role ===
+        'manager'
+      ) {
+
+        skippedManagers++;
+
+        console.log(
+          `⏭️ Skipping manager reminder - Flat: ${payment.flat_no}`
+        );
+
+        continue;
+      }
+
+      /*
+       * ========================================================
+       * ONLY RESIDENT / ADMIN
+       * ========================================================
+       */
+      if (
+        ![
+          'resident',
+          'admin'
+        ].includes(
+          payment.user_id.role
+        )
+      ) {
+
+        skippedManagers++;
+
+        console.log(
+          `⏭️ Skipping reminder for role ${payment.user_id.role} - Flat: ${payment.flat_no}`
+        );
+
+        continue;
+      }
+
       try {
 
+        /*
+         * ======================================================
+         * SEND EMAIL
+         * ======================================================
+         */
         switch (type) {
 
+          /*
+           * ----------------------------------------------------
+           * INVOICE
+           * ----------------------------------------------------
+           */
           case 'invoice':
 
             await emailService.sendMaintenanceInvoice({
@@ -366,6 +599,11 @@ const sendRemindersByType = async (
             break;
 
 
+          /*
+           * ----------------------------------------------------
+           * REMINDER
+           * ----------------------------------------------------
+           */
           case 'reminder':
 
             await emailService.sendMaintenanceReminder({
@@ -390,12 +628,18 @@ const sendRemindersByType = async (
               due_date:
                 payment.due_date,
 
-              is_overdue: false
+              is_overdue:
+                false
             });
 
             break;
 
 
+          /*
+           * ----------------------------------------------------
+           * FINAL WARNING
+           * ----------------------------------------------------
+           */
           case 'final_warning':
 
             await emailService.sendFinalWarning({
@@ -426,17 +670,26 @@ const sendRemindersByType = async (
 
         sent++;
 
+        /*
+         * ======================================================
+         * SOCIETY STATISTICS
+         * ======================================================
+         */
         const societyKey =
           payment.society_id.toString();
 
-        if (!societyStats[societyKey]) {
+        if (
+          !societyStats[societyKey]
+        ) {
           societyStats[societyKey] = {
             sent: 0,
+            skippedManagers: 0,
             errors: 0
           };
         }
 
-        societyStats[societyKey].sent++;
+        societyStats[societyKey]
+          .sent++;
 
       } catch (err) {
 
@@ -447,30 +700,51 @@ const sendRemindersByType = async (
 
         errors++;
 
-        if (payment.society_id) {
+        if (
+          payment.society_id
+        ) {
 
           const societyKey =
             payment.society_id.toString();
 
-          if (!societyStats[societyKey]) {
+          if (
+            !societyStats[societyKey]
+          ) {
             societyStats[societyKey] = {
               sent: 0,
+              skippedManagers: 0,
               errors: 0
             };
           }
 
-          societyStats[societyKey].errors++;
+          societyStats[societyKey]
+            .errors++;
         }
       }
     }
 
+    /*
+     * ==========================================================
+     * RETURN RESULT
+     * ==========================================================
+     */
     return {
       sent,
+
+      skippedManagers,
+
       errors,
+
       type,
-      month: targetMonth,
-      year: targetYear,
-      societies: societyStats
+
+      month:
+        targetMonth,
+
+      year:
+        targetYear,
+
+      societies:
+        societyStats
     };
 
   } catch (error) {
@@ -485,6 +759,11 @@ const sendRemindersByType = async (
 };
 
 
+/**
+ * ============================================================
+ * EXPORTS
+ * ============================================================
+ */
 module.exports = {
   sendPaymentReminders,
   sendRemindersByType

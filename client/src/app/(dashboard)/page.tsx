@@ -206,6 +206,9 @@ export default function DashboardPage() {
   const isSuperAdmin =
     user?.role === 'super_admin';
 
+  const isManager =
+    user?.role === 'manager';
+
   const isAdmin =
     !!user &&
     ['manager', 'admin'].includes(
@@ -449,49 +452,51 @@ export default function DashboardPage() {
           // Maintenance
           // --------------------------------------------------
 
-          const maintenanceResponse =
-            await api.get(
-              '/maintenance/current'
-            );
+          if (user.role !== 'manager') {
+            const maintenanceResponse =
+              await api.get(
+                '/maintenance/current'
+              );
 
-          if (
-            maintenanceResponse.data
-              ?.success
-          ) {
-            const maintenance =
+            if (
               maintenanceResponse.data
-                .data;
+                ?.success
+            ) {
+              const maintenance =
+                maintenanceResponse.data
+                  .data;
 
-            setDashboardData(
-              (prev) => ({
-                ...prev,
+              setDashboardData(
+                (prev) => ({
+                  ...prev,
 
-                maintenance: {
-                  amount:
-                    Number(
+                  maintenance: {
+                    amount:
+                      Number(
+                        maintenance
+                          ?.total_amount || 0
+                      ),
+
+                    dueDate:
                       maintenance
-                        ?.total_amount || 0
-                    ),
+                        ?.due_date ||
+                      new Date()
+                        .toISOString(),
 
-                  dueDate:
-                    maintenance
-                      ?.due_date ||
-                    new Date()
-                      .toISOString(),
-
-                  status:
-                    maintenance
-                      ?.status ||
-                    'pending',
-
-                  lateFeesApplied:
-                    Number(
+                    status:
                       maintenance
-                        ?.late_fee || 0
-                    ),
-                },
-              })
-            );
+                        ?.status ||
+                      'pending',
+
+                    lateFeesApplied:
+                      Number(
+                        maintenance
+                          ?.late_fee || 0
+                      ),
+                  },
+                })
+              );
+            }
           }
 
 
@@ -583,6 +588,26 @@ export default function DashboardPage() {
   const handleRefreshSocieties =
     async () => {
       await fetchSocieties(true);
+    };
+
+
+  // ==========================================================
+  // SCROLL TO SOCIETIES
+  // ==========================================================
+
+  const handleOpenSocieties =
+    () => {
+      const element =
+        document.getElementById(
+          'societies-section'
+        );
+
+      if (element) {
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }
     };
 
 
@@ -1983,45 +2008,43 @@ export default function DashboardPage() {
 
               {/* Societies */}
 
-              <Link
-                href="/admin/societies"
-                className="block w-full"
+              <Button
+                type="button"
+                onClick={
+                  handleOpenSocieties
+                }
+                variant="secondary"
+                className="
+                  w-full
+                  h-auto
+                  py-4
+                  flex
+                  flex-col
+                  gap-2
+                  bg-slate-700/50
+                  hover:bg-slate-700
+                  border-0
+                  text-white
+                "
               >
-                <Button
-                  type="button"
-                  variant="secondary"
+
+                <Building2
                   className="
-                    w-full
-                    h-auto
-                    py-4
-                    flex
-                    flex-col
-                    gap-2
-                    bg-slate-700/50
-                    hover:bg-slate-700
-                    border-0
-                    text-white
+                    w-5
+                    h-5
+                  "
+                />
+
+                <span
+                  className="
+                    text-xs
+                    font-medium
                   "
                 >
+                  Societies
+                </span>
 
-                  <Building2
-                    className="
-                      w-5
-                      h-5
-                    "
-                  />
-
-                  <span
-                    className="
-                      text-xs
-                      font-medium
-                    "
-                  >
-                    Societies
-                  </span>
-
-                </Button>
-              </Link>
+              </Button>
 
 
               {/* Users */}
@@ -2352,31 +2375,63 @@ export default function DashboardPage() {
         "
       >
 
-        <PaymentCard
-          amount={
-            dashboardData
-              .maintenance
-              .amount
-          }
-          dueDate={
-            dashboardData
-              .maintenance
-              .dueDate
-          }
-          status={
-            dashboardData
-              .maintenance
-              .status
-          }
-          lateFeesApplied={
-            dashboardData
-              .maintenance
-              .lateFeesApplied
-          }
-          loading={
-            dataLoading
-          }
-        />
+        {!isManager ? (
+          <PaymentCard
+            amount={
+              dashboardData
+                .maintenance
+                .amount
+            }
+            dueDate={
+              dashboardData
+                .maintenance
+                .dueDate
+            }
+            status={
+              dashboardData
+                .maintenance
+                .status
+            }
+            lateFeesApplied={
+              dashboardData
+                .maintenance
+                .lateFeesApplied
+            }
+            loading={
+              dataLoading
+            }
+          />
+        ) : (
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-6 h-full flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500">
+                      Maintenance
+                    </p>
+                    <h3 className="text-xl font-bold text-slate-900 mt-2">
+                      Society Maintenance
+                    </h3>
+                  </div>
+                  <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center">
+                    <BarChart3 className="w-5 h-5 text-blue-600" />
+                  </div>
+                </div>
+                <p className="text-sm text-slate-500 mt-4">
+                  Manage maintenance payments and collection for your society.
+                </p>
+              </div>
+              <Button
+                className="w-full mt-6"
+                onClick={() => router.push('/admin/payments')}
+              >
+                Manage Maintenance
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
 
         <ComplaintsWidget

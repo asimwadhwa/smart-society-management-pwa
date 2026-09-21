@@ -1,5 +1,4 @@
 const crypto = require('crypto');
-
 const mongoose = require('mongoose');
 
 const Maintenance = require('../models/Maintenance');
@@ -36,6 +35,11 @@ const isSuperAdmin = (req) => {
 };
 
 
+const isManager = (req) => {
+  return req.user?.role === 'manager';
+};
+
+
 const isAdminOrManager = (req) => {
   return [
     'admin',
@@ -51,6 +55,8 @@ const isValidObjectId = (id) => {
 
 // ============================================================
 // VERIFY PAYMENT
+// Resident/Admin can pay their own maintenance
+// Manager cannot make personal maintenance payments
 // ============================================================
 
 exports.verifyPayment = async (
@@ -59,6 +65,19 @@ exports.verifyPayment = async (
   next
 ) => {
   try {
+
+    // ========================================================
+    // MANAGER CANNOT MAKE PERSONAL MAINTENANCE PAYMENT
+    // ========================================================
+
+    if (isManager(req)) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Managers do not have personal maintenance payments'
+      });
+    }
+
 
     const {
       razorpay_order_id,
@@ -95,6 +114,15 @@ exports.verifyPayment = async (
     }
 
 
+    if (!isValidObjectId(maintenance_id)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid maintenance ID'
+      });
+    }
+
+
     const maintenance =
       await Maintenance.findOne({
         _id: maintenance_id,
@@ -111,6 +139,10 @@ exports.verifyPayment = async (
     }
 
 
+    // ========================================================
+    // ONLY MAINTENANCE OWNER CAN PAY
+    // ========================================================
+
     if (
       maintenance.user_id.toString() !==
       req.user._id.toString()
@@ -122,6 +154,10 @@ exports.verifyPayment = async (
       });
     }
 
+
+    // ========================================================
+    // CHECK ORDER ID
+    // ========================================================
 
     if (
       maintenance.razorpay_order_id !==
@@ -135,6 +171,10 @@ exports.verifyPayment = async (
     }
 
 
+    // ========================================================
+    // CHECK PAYMENT STATUS
+    // ========================================================
+
     if (
       maintenance.status === 'paid'
     ) {
@@ -145,6 +185,10 @@ exports.verifyPayment = async (
       });
     }
 
+
+    // ========================================================
+    // VERIFY RAZORPAY SIGNATURE
+    // ========================================================
 
     const body =
       razorpay_order_id +
@@ -174,7 +218,15 @@ exports.verifyPayment = async (
     }
 
 
-    maintenance.status = 'paid';
+    // ========================================================
+    // UPDATE MAINTENANCE
+    // ========================================================
+
+    maintenance.status =
+      'paid';
+
+    maintenance.paid_date =
+      new Date();
 
     maintenance.razorpay_payment_id =
       razorpay_payment_id;
@@ -182,6 +234,10 @@ exports.verifyPayment = async (
 
     await maintenance.save();
 
+
+    // ========================================================
+    // CREATE PAYMENT LOG
+    // ========================================================
 
     let paymentLog =
       await PaymentLog.findOne({
@@ -231,6 +287,10 @@ exports.verifyPayment = async (
     }
 
 
+    // ========================================================
+    // PAYMENT CONFIRMATION EMAIL
+    // ========================================================
+
     if (
       emailService &&
       emailService.sendPaymentConfirmation
@@ -276,6 +336,10 @@ exports.verifyPayment = async (
       }
     }
 
+
+    // ========================================================
+    // RESPONSE
+    // ========================================================
 
     return res.status(200).json({
 
@@ -459,6 +523,10 @@ exports.getAllPayments = async (
     }
 
 
+    // ========================================================
+    // TOTAL
+    // ========================================================
+
     const total =
       await PaymentLog.countDocuments(
         query
@@ -493,6 +561,10 @@ exports.getAllPayments = async (
         sortOrder
     };
 
+
+    // ========================================================
+    // FETCH PAYMENTS
+    // ========================================================
 
     const payments =
       await PaymentLog.find(query)
@@ -623,6 +695,10 @@ exports.getPaymentStats = async (
     }
 
 
+    // ========================================================
+    // AGGREGATE STATS
+    // ========================================================
+
     const result =
       await PaymentLog.aggregate([
 
@@ -692,6 +768,9 @@ exports.getPaymentStats = async (
 
 // ============================================================
 // GET PAYMENT DETAILS
+// Super Admin = ANY SOCIETY
+// Manager/Admin = OWN SOCIETY
+// Resident = OWN PAYMENT
 // ============================================================
 
 exports.getPaymentDetails = async (
@@ -725,8 +804,10 @@ exports.getPaymentDetails = async (
     };
 
 
-    // Super Admin can access
-    // payments from any society.
+    // ========================================================
+    // SOCIETY SCOPE
+    // ========================================================
+
     if (
       !isSuperAdmin(req)
     ) {
@@ -771,6 +852,10 @@ exports.getPaymentDetails = async (
     }
 
 
+    // ========================================================
+    // ACCESS CONTROL
+    // ========================================================
+
     const isOwner =
       payment.user_id &&
       payment.user_id._id.toString() ===
@@ -814,6 +899,8 @@ exports.getPaymentDetails = async (
 
 // ============================================================
 // PAYMENT STATUS
+// Resident/Admin can check their payment
+// Manager cannot check personal payment status
 // ============================================================
 
 exports.getPaymentStatus = async (
@@ -824,9 +911,31 @@ exports.getPaymentStatus = async (
 
   try {
 
+    // ========================================================
+    // MANAGER DOES NOT HAVE PERSONAL PAYMENT STATUS
+    // ========================================================
+
+    if (isManager(req)) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Managers do not have personal maintenance payments'
+      });
+    }
+
+
     const {
       orderId
     } = req.params;
+
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Order ID is required'
+      });
+    }
 
 
     const query = {
@@ -834,6 +943,10 @@ exports.getPaymentStatus = async (
         orderId
     };
 
+
+    // ========================================================
+    // SOCIETY SCOPE
+    // ========================================================
 
     if (
       !isSuperAdmin(req)
@@ -870,6 +983,10 @@ exports.getPaymentStatus = async (
     }
 
 
+    // ========================================================
+    // OWNER / ADMIN / SUPER ADMIN ACCESS
+    // ========================================================
+
     const isOwner =
       maintenance.user_id.toString() ===
       req.user._id.toString();
@@ -888,6 +1005,10 @@ exports.getPaymentStatus = async (
       });
     }
 
+
+    // ========================================================
+    // RAZORPAY ORDER
+    // ========================================================
 
     const order =
       await razorpay.orders.fetch(
@@ -1178,9 +1299,41 @@ async function handlePaymentCaptured(
     }
 
 
+    // ========================================================
+    // DO NOT CREATE PAYMENT FOR MANAGER
+    // ========================================================
+
+    const maintenanceUser =
+      await mongoose
+        .model('User')
+        .findById(
+          maintenance.user_id
+        )
+        .select('role');
+
+
+    if (
+      maintenanceUser &&
+      maintenanceUser.role === 'manager'
+    ) {
+
+      console.log(
+        'Skipping manager maintenance payment:',
+        maintenance._id
+      );
+
+      return;
+    }
+
+
     maintenance.status =
       'paid';
 
+    maintenance.paid_date =
+      new Date(
+        payment.created_at *
+        1000
+      );
 
     maintenance.razorpay_payment_id =
       paymentId;
@@ -1188,6 +1341,10 @@ async function handlePaymentCaptured(
 
     await maintenance.save();
 
+
+    // ========================================================
+    // CREATE PAYMENT LOG
+    // ========================================================
 
     const existingLog =
       await PaymentLog.findOne({
@@ -1316,4 +1473,4 @@ async function handleOrderPaid(
     );
 
   }
-}
+};
