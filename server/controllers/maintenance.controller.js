@@ -214,20 +214,22 @@ const ensureDefaultMaintenanceSettings = async (society) => {
 //
 // Resident + Admin + Manager
 //
-// Automatically creates maintenance when current month
-// maintenance does not exist.
+// IMPORTANT:
+// Maintenance unique index:
 //
-// New maintenance:
-// Amount = Society configured amount
-// Late Fee = 0
+// society_id + flat_no + month + year
 //
-// Late fee will be applied after due date.
+// Therefore existing maintenance is searched using the same
+// unique combination.
+//
+// This prevents duplicate-key errors when the current-month
+// maintenance already exists.
 // ============================================================
 
 const createCurrentMonthMaintenance = async (
   req,
   society
-) => {
+) {
 
   const now =
     new Date();
@@ -241,20 +243,33 @@ const createCurrentMonthMaintenance = async (
     now.getFullYear();
 
 
+  // ==========================================================
+  // UNIQUE DATABASE KEY
+  // ==========================================================
+
+  const existingFilter = {
+
+    society_id:
+      society._id,
+
+    flat_no:
+      req.user.flat_no,
+
+    month,
+
+    year
+
+  };
+
+
+  // ==========================================================
+  // CHECK EXISTING MAINTENANCE
+  // ==========================================================
+
   let maintenance =
-    await Maintenance.findOne({
-
-      society_id:
-        society._id,
-
-      user_id:
-        req.user._id,
-
-      month,
-
-      year
-
-    });
+    await Maintenance.findOne(
+      existingFilter
+    );
 
 
   if (maintenance) {
@@ -264,11 +279,19 @@ const createCurrentMonthMaintenance = async (
   }
 
 
+  // ==========================================================
+  // GET SOCIETY SETTINGS
+  // ==========================================================
+
   const settings =
     await getEffectiveMaintenanceSettings(
       society
     );
 
+
+  // ==========================================================
+  // DUE DATE
+  // ==========================================================
 
   const dueDate =
     new Date(
@@ -286,40 +309,76 @@ const createCurrentMonthMaintenance = async (
     );
 
 
-  maintenance =
-    await Maintenance.create({
+  // ==========================================================
+  // CREATE MAINTENANCE
+  // ==========================================================
 
-      society_id:
-        society._id,
+  try {
 
-      user_id:
-        req.user._id,
+    maintenance =
+      await Maintenance.create({
 
-      flat_no:
-        req.user.flat_no,
+        society_id:
+          society._id,
 
-      month,
+        user_id:
+          req.user._id,
 
-      year,
+        flat_no:
+          req.user.flat_no,
 
-      amount:
-        settings.amount,
+        month,
 
-      late_fee:
-        0,
+        year,
 
-      due_date:
-        dueDate,
+        amount:
+          settings.amount,
 
-      status:
-        dueDate < now
-          ? 'overdue'
-          : 'pending'
+        // New maintenance starts without late fee.
+        late_fee:
+          0,
 
-    });
+        due_date:
+          dueDate,
+
+        status:
+          dueDate < now
+            ? 'overdue'
+            : 'pending'
+
+      });
 
 
-  return maintenance;
+    return maintenance;
+
+  } catch (error) {
+
+    // ========================================================
+    // DUPLICATE REQUEST / RACE CONDITION
+    // ========================================================
+
+    if (
+      error?.code === 11000
+    ) {
+
+      const existing =
+        await Maintenance.findOne(
+          existingFilter
+        );
+
+
+      if (existing) {
+
+        return existing;
+
+      }
+
+    }
+
+
+    throw error;
+
+  }
 
 };
 
@@ -419,9 +478,9 @@ exports.getUserMaintenance = async (
     );
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // MAKE SURE CURRENT MONTH MAINTENANCE EXISTS
-    // --------------------------------------------------------
+    // ========================================================
 
     await createCurrentMonthMaintenance(
       req,
@@ -467,6 +526,7 @@ exports.getUserMaintenance = async (
       const parsedMonth =
         parseInt(month);
 
+
       if (
         Number.isInteger(parsedMonth) &&
         parsedMonth >= 1 &&
@@ -485,6 +545,7 @@ exports.getUserMaintenance = async (
 
       const parsedYear =
         parseInt(year);
+
 
       if (
         Number.isInteger(parsedYear)
@@ -842,9 +903,9 @@ exports.getAllMaintenance = async (
     const filter = {};
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // SOCIETY SCOPE
-    // --------------------------------------------------------
+    // ========================================================
 
     if (isSuperAdmin(req)) {
 
@@ -899,14 +960,15 @@ exports.getAllMaintenance = async (
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // MONTH / YEAR / STATUS
-    // --------------------------------------------------------
+    // ========================================================
 
     if (month) {
 
       const parsedMonth =
         parseInt(month);
+
 
       if (
         Number.isInteger(parsedMonth) &&
@@ -926,6 +988,7 @@ exports.getAllMaintenance = async (
 
       const parsedYear =
         parseInt(year);
+
 
       if (
         Number.isInteger(parsedYear)
@@ -954,14 +1017,9 @@ exports.getAllMaintenance = async (
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // FETCH MAINTENANCE
-    //
-    // Maintenance records are already created only for
-    // Resident/Admin/Manager.
-    //
-    // Populate user role as an additional safety check.
-    // --------------------------------------------------------
+    // ========================================================
 
     const maintenance =
       await Maintenance.find(filter)
@@ -993,9 +1051,9 @@ exports.getAllMaintenance = async (
         });
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // SAFETY FILTER
-    // --------------------------------------------------------
+    // ========================================================
 
     const filteredMaintenance =
       maintenance.filter(
@@ -1071,9 +1129,9 @@ exports.getPaymentStats = async (
     const filter = {};
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // SOCIETY SCOPE
-    // --------------------------------------------------------
+    // ========================================================
 
     if (isSuperAdmin(req)) {
 
@@ -1133,6 +1191,7 @@ exports.getPaymentStats = async (
       const parsedMonth =
         parseInt(month);
 
+
       if (
         Number.isInteger(parsedMonth) &&
         parsedMonth >= 1 &&
@@ -1151,6 +1210,7 @@ exports.getPaymentStats = async (
 
       const parsedYear =
         parseInt(year);
+
 
       if (
         Number.isInteger(parsedYear)
@@ -1553,10 +1613,6 @@ exports.updateMaintenanceSettings = async (
     } = req.body || {};
 
 
-    // --------------------------------------------------------
-    // AMOUNT
-    // --------------------------------------------------------
-
     let amount =
       maintenance_amount;
 
@@ -1593,10 +1649,6 @@ exports.updateMaintenanceSettings = async (
 
     }
 
-
-    // --------------------------------------------------------
-    // DUE DAY
-    // --------------------------------------------------------
 
     let dueDay =
       maintenance_due_day;
@@ -1635,10 +1687,6 @@ exports.updateMaintenanceSettings = async (
 
     }
 
-
-    // --------------------------------------------------------
-    // LATE FEE
-    // --------------------------------------------------------
 
     let lateFee =
       maintenance_late_fee;
@@ -1707,9 +1755,7 @@ exports.updateMaintenanceSettings = async (
         }
 
       ).select(
-
         'name society_code maintenance_amount maintenance_due_day maintenance_late_fee'
-
       );
 
 
@@ -1899,10 +1945,6 @@ exports.updateMaintenance = async (
       false;
 
 
-    // --------------------------------------------------------
-    // AMOUNT
-    // --------------------------------------------------------
-
     if (
       amount !== undefined
     ) {
@@ -1939,10 +1981,6 @@ exports.updateMaintenance = async (
     }
 
 
-    // --------------------------------------------------------
-    // LATE FEE
-    // --------------------------------------------------------
-
     if (
       late_fee !== undefined
     ) {
@@ -1978,10 +2016,6 @@ exports.updateMaintenance = async (
 
     }
 
-
-    // --------------------------------------------------------
-    // DUE DATE
-    // --------------------------------------------------------
 
     if (
       due_date !== undefined
@@ -2020,10 +2054,6 @@ exports.updateMaintenance = async (
     }
 
 
-    // --------------------------------------------------------
-    // STATUS
-    // --------------------------------------------------------
-
     const now =
       new Date();
 
@@ -2044,10 +2074,6 @@ exports.updateMaintenance = async (
     }
 
 
-    // --------------------------------------------------------
-    // RESET OLD RAZORPAY ORDER
-    // --------------------------------------------------------
-
     if (financialChange) {
 
       maintenance.razorpay_order_id =
@@ -2058,10 +2084,6 @@ exports.updateMaintenance = async (
 
     }
 
-
-    // --------------------------------------------------------
-    // TOTAL
-    // --------------------------------------------------------
 
     maintenance.total_amount =
       Number(
@@ -2521,9 +2543,9 @@ exports.generateMonthlyMaintenance = async (
     }
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // OPTIONAL SETTINGS
-    // --------------------------------------------------------
+    // ========================================================
 
     if (
       req.body?.amount !== undefined
@@ -2638,9 +2660,9 @@ exports.generateMonthlyMaintenance = async (
       );
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // RESIDENT + ADMIN + MANAGER
-    // --------------------------------------------------------
+    // ========================================================
 
     const users =
       await User.find({
@@ -2734,22 +2756,24 @@ exports.generateMonthlyMaintenance = async (
       [];
 
 
-    // --------------------------------------------------------
+    // ========================================================
     // CREATE RECORDS
-    // --------------------------------------------------------
+    // ========================================================
 
     for (
       const user of users
     ) {
 
+      // IMPORTANT:
+      // Check using the SAME fields as the unique index.
       const existing =
         await Maintenance.findOne({
 
           society_id:
             societyId,
 
-          user_id:
-            user._id,
+          flat_no:
+            user.flat_no,
 
           month,
 
@@ -2821,6 +2845,7 @@ exports.generateMonthlyMaintenance = async (
           continue;
 
         }
+
 
         throw createError;
 
