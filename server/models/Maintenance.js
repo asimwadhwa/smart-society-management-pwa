@@ -86,13 +86,7 @@ const MaintenanceSchema = new mongoose.Schema({
 
   // ============================================================
   // MAINTENANCE AMOUNT
-  //
   // Default = ₹1000
-  //
-  // Society settings se generate hone par actual
-  // configured amount yahan save hoga.
-  //
-  // Manager/Admin settings se amount edit kar sakte hain.
   // ============================================================
 
   amount: {
@@ -108,18 +102,7 @@ const MaintenanceSchema = new mongoose.Schema({
 
   // ============================================================
   // LATE FEE
-  //
   // Default = ₹100
-  //
-  // IMPORTANT:
-  //
-  // New maintenance create hone par controller/generator
-  // normally late_fee = 0 rakhega.
-  //
-  // Due date cross hone ke baad lateFeeApplier society ki
-  // configured late fee apply karega.
-  //
-  // Agar direct model creation ho to default ₹100 available hai.
   // ============================================================
 
   late_fee: {
@@ -142,12 +125,8 @@ const MaintenanceSchema = new mongoose.Schema({
     default: function () {
 
       return (
-        Number(
-          this.amount || 0
-        ) +
-        Number(
-          this.late_fee || 0
-        )
+        Number(this.amount || 0) +
+        Number(this.late_fee || 0)
       );
 
     }
@@ -231,55 +210,44 @@ const MaintenanceSchema = new mongoose.Schema({
 
 // One maintenance record per flat per month per society
 MaintenanceSchema.index(
-
   {
     society_id: 1,
     flat_no: 1,
     month: 1,
     year: 1
   },
-
   {
     unique: true
   }
-
 );
 
 
 // Status lookup
 MaintenanceSchema.index({
-
   society_id: 1,
   status: 1
-
 });
 
 
 // Due date lookup
 MaintenanceSchema.index({
-
   society_id: 1,
   due_date: 1
-
 });
 
 
 // User maintenance lookup
 MaintenanceSchema.index({
-
   society_id: 1,
   user_id: 1
-
 });
 
 
 // Month/year lookup
 MaintenanceSchema.index({
-
   society_id: 1,
   month: 1,
   year: 1
-
 });
 
 
@@ -292,15 +260,8 @@ MaintenanceSchema.virtual(
 ).get(function () {
 
   return (
-
-    Number(
-      this.amount || 0
-    ) +
-
-    Number(
-      this.late_fee || 0
-    )
-
+    Number(this.amount || 0) +
+    Number(this.late_fee || 0)
   );
 
 });
@@ -310,12 +271,13 @@ MaintenanceSchema.virtual(
 // PRE SAVE
 // ============================================================
 //
-// Every save ke time:
+// Mongoose current version ke liye callback `next()` use nahi
+// karna hai.
 //
+// Every save:
 // total_amount = amount + late_fee
 //
 // Example:
-//
 // ₹1000 + ₹0   = ₹1000
 // ₹1000 + ₹100 = ₹1100
 //
@@ -323,19 +285,11 @@ MaintenanceSchema.virtual(
 
 MaintenanceSchema.pre(
   'save',
-  function (next) {
+  function () {
 
     this.total_amount =
-
-      Number(
-        this.amount || 0
-      ) +
-
-      Number(
-        this.late_fee || 0
-      );
-
-    next();
+      Number(this.amount || 0) +
+      Number(this.late_fee || 0);
 
   }
 );
