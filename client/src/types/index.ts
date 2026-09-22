@@ -1,6 +1,14 @@
 // User Types
 
+export interface SocietyInfo {
+  _id: string;
+  name: string;
+  society_code: string;
+}
+
+
 export interface User {
+
   _id: string;
 
   name: string;
@@ -12,6 +20,10 @@ export interface User {
   flat_no: string;
 
   society_id?: string | null;
+
+  society?: SocietyInfo;
+
+  society_name?: string;
 
   role:
     | 'super_admin'
@@ -27,35 +39,43 @@ export interface User {
   created_at: string;
 
   updated_at: string;
+
 }
 
 
 export interface AuthResponse {
+
   success: boolean;
 
   message: string;
 
   user?: User;
+
 }
 
 
 export interface ApiError {
+
   success: boolean;
 
   message: string;
+
 }
 
 
 // Login/Register form types
 
 export interface LoginCredentials {
+
   email: string;
 
   password: string;
+
 }
 
 
 export interface RegisterData {
+
   name: string;
 
   email: string;
@@ -67,15 +87,18 @@ export interface RegisterData {
   phone: string;
 
   society_code?: string;
+
 }
 
 
-export type ManagerSetupData = RegisterData;
+export type ManagerSetupData =
+  RegisterData;
 
 
 // Maintenance Types
 
 export interface Maintenance {
+
   _id: string;
 
   society_id?: string;
@@ -110,10 +133,12 @@ export interface Maintenance {
   created_at: string;
 
   updated_at: string;
+
 }
 
 
 export interface PaymentLog {
+
   _id: string;
 
   society_id?: string;
@@ -133,12 +158,14 @@ export interface PaymentLog {
   year: number;
 
   created_at: string;
+
 }
 
 
 // Emergency Types
 
 export interface LiftEmergency {
+
   _id: string;
 
   triggered_by: User | string;
@@ -158,12 +185,14 @@ export interface LiftEmergency {
   created_at: string;
 
   updated_at: string;
+
 }
 
 
 // Complaint Types
 
 export interface Complaint {
+
   _id: string;
 
   user_id: User | string;
@@ -186,12 +215,14 @@ export interface Complaint {
   created_at: string;
 
   updated_at: string;
+
 }
 
 
 // Gate Log Types
 
 export interface GateLog {
+
   _id: string;
 
   visitor_name: string;
@@ -209,12 +240,14 @@ export interface GateLog {
   created_at: string;
 
   updated_at: string;
+
 }
 
 
 // Asset Types
 
 export interface ServiceLog {
+
   _id?: string;
 
   date: string;
@@ -222,10 +255,12 @@ export interface ServiceLog {
   description: string;
 
   done_by: string;
+
 }
 
 
 export interface Asset {
+
   _id: string;
 
   type:
@@ -249,4 +284,5 @@ export interface Asset {
   createdAt: string;
 
   updatedAt: string;
+
 }

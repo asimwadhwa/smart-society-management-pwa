@@ -18,12 +18,27 @@ import {
   AuthResponse
 } from '@/types';
 
+
 interface LoginData extends LoginCredentials {
   society_code?: string;
 }
 
+
+interface SocietyInfo {
+  _id: string;
+  name: string;
+  society_code: string;
+}
+
+
+interface AuthUser extends User {
+  society?: SocietyInfo;
+  society_name?: string;
+}
+
+
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   loading: boolean;
   isAuthenticated: boolean;
 
@@ -44,21 +59,76 @@ interface AuthContextType {
   checkAuth: () => Promise<void>;
 }
 
+
 const AuthContext =
   createContext<AuthContextType | undefined>(
     undefined
   );
+
 
 export function AuthProvider({
   children
 }: {
   children: React.ReactNode;
 }) {
+
   const [user, setUser] =
-    useState<User | null>(null);
+    useState<AuthUser | null>(null);
+
 
   const [loading, setLoading] =
     useState(true);
+
+
+  // ============================================================
+  // CREATE COMPLETE USER OBJECT
+  // ============================================================
+
+  const buildUserWithSociety = (
+    userData: User,
+    societyData?: SocietyInfo | null
+  ): AuthUser => {
+
+    const completeUser: AuthUser = {
+      ...userData
+    };
+
+
+    if (societyData) {
+
+      completeUser.society =
+        societyData;
+
+      completeUser.society_name =
+        societyData.name;
+
+    }
+    else if (
+      (userData as AuthUser).society
+    ) {
+
+      completeUser.society =
+        (userData as AuthUser).society;
+
+      completeUser.society_name =
+        (userData as AuthUser)
+          .society?.name;
+
+    }
+    else if (
+      (userData as AuthUser).society_name
+    ) {
+
+      completeUser.society_name =
+        (userData as AuthUser)
+          .society_name;
+
+    }
+
+
+    return completeUser;
+  };
+
 
   // ============================================================
   // CHECK AUTHENTICATION
@@ -66,38 +136,70 @@ export function AuthProvider({
 
   const checkAuth = useCallback(
     async () => {
+
       try {
+
         setLoading(true);
+
 
         const token =
           typeof window !== 'undefined'
             ? localStorage.getItem('token')
             : null;
 
+
         if (!token) {
+
           setUser(null);
+
           setLoading(false);
+
           return;
+
         }
+
 
         const response =
           await api.get(
             `/auth/me?_t=${Date.now()}`
           );
 
+
         if (
           response.data.success &&
           response.data.data?.user
         ) {
+
+          const userData =
+            response.data.data.user;
+
+
+          const societyData =
+            response.data.data.society ||
+            userData.society ||
+            null;
+
+
+          const completeUser =
+            buildUserWithSociety(
+              userData,
+              societyData
+            );
+
+
           setUser(
-            response.data.data.user
+            completeUser
           );
-        } else {
+
+        }
+        else {
+
           localStorage.removeItem(
             'token'
           );
 
           setUser(null);
+
         }
 
       } catch (_error) {
@@ -105,23 +207,35 @@ export function AuthProvider({
         if (
           typeof window !== 'undefined'
         ) {
+
           localStorage.removeItem(
             'token'
           );
+
         }
+
 
         setUser(null);
 
       } finally {
+
         setLoading(false);
+
       }
+
     },
     []
   );
 
+
   useEffect(() => {
+
     checkAuth();
-  }, [checkAuth]);
+
+  }, [
+    checkAuth
+  ]);
+
 
   // ============================================================
   // LOGIN
@@ -130,6 +244,7 @@ export function AuthProvider({
   const login = async (
     credentials: LoginData
   ): Promise<AuthResponse> => {
+
     try {
 
       const response =
@@ -138,6 +253,7 @@ export function AuthProvider({
           credentials
         );
 
+
       if (
         response.data.success &&
         response.data.data?.user
@@ -146,30 +262,70 @@ export function AuthProvider({
         if (
           response.data.data.token
         ) {
+
           localStorage.setItem(
             'token',
             response.data.data.token
           );
+
         }
 
+
+        const userData =
+          response.data.data.user;
+
+
+        /*
+         * Backend login response:
+         *
+         * data.user
+         * data.society
+         *
+         * Society information is merged
+         * into the logged-in user object.
+         */
+
+        const societyData =
+          response.data.data.society ||
+          userData.society ||
+          null;
+
+
+        const loggedInUser =
+          buildUserWithSociety(
+            userData,
+            societyData
+          );
+
+
         setUser(
-          response.data.data.user
+          loggedInUser
         );
 
+
         return {
+
           success: true,
+
           message:
             response.data.message,
+
           user:
-            response.data.data.user
+            loggedInUser
+
         };
+
       }
 
+
       return {
+
         success: false,
+
         message:
           response.data.message ||
           'Login failed'
+
       };
 
     } catch (error: unknown) {
@@ -183,17 +339,25 @@ export function AuthProvider({
           }
         };
 
+
       const message =
         axiosError.response?.data
           ?.message ||
         'Login failed. Please try again.';
 
+
       return {
+
         success: false,
+
         message
+
       };
+
     }
+
   };
+
 
   // ============================================================
   // REGISTER
@@ -202,6 +366,7 @@ export function AuthProvider({
   const register = async (
     data: RegisterData
   ): Promise<AuthResponse> => {
+
     try {
 
       const response =
@@ -210,20 +375,31 @@ export function AuthProvider({
           data
         );
 
-      if (response.data.success) {
+
+      if (
+        response.data.success
+      ) {
 
         return {
+
           success: true,
+
           message:
             response.data.message
+
         };
+
       }
 
+
       return {
+
         success: false,
+
         message:
           response.data.message ||
           'Registration failed'
+
       };
 
     } catch (error: unknown) {
@@ -237,17 +413,25 @@ export function AuthProvider({
           }
         };
 
+
       const message =
         axiosError.response?.data
           ?.message ||
         'Registration failed. Please try again.';
 
+
       return {
+
         success: false,
+
         message
+
       };
+
     }
+
   };
+
 
   // ============================================================
   // MANAGER SETUP
@@ -256,6 +440,7 @@ export function AuthProvider({
   const managerSetup = async (
     data: ManagerSetupData
   ): Promise<AuthResponse> => {
+
     try {
 
       const response =
@@ -263,6 +448,7 @@ export function AuthProvider({
           '/auth/manager-setup',
           data
         );
+
 
       if (
         response.data.success &&
@@ -272,30 +458,60 @@ export function AuthProvider({
         if (
           response.data.data.token
         ) {
+
           localStorage.setItem(
             'token',
             response.data.data.token
           );
+
         }
 
+
+        const userData =
+          response.data.data.user;
+
+
+        const societyData =
+          response.data.data.society ||
+          userData.society ||
+          null;
+
+
+        const managerUser =
+          buildUserWithSociety(
+            userData,
+            societyData
+          );
+
+
         setUser(
-          response.data.data.user
+          managerUser
         );
 
+
         return {
+
           success: true,
+
           message:
             response.data.message,
+
           user:
-            response.data.data.user
+            managerUser
+
         };
+
       }
 
+
       return {
+
         success: false,
+
         message:
           response.data.message ||
           'Setup failed'
+
       };
 
     } catch (error: unknown) {
@@ -309,23 +525,32 @@ export function AuthProvider({
           }
         };
 
+
       const message =
         axiosError.response?.data
           ?.message ||
         'Manager setup failed. Please try again.';
 
+
       return {
+
         success: false,
+
         message
+
       };
+
     }
+
   };
+
 
   // ============================================================
   // LOGOUT
   // ============================================================
 
   const logout = async (): Promise<void> => {
+
     try {
 
       await api.post(
@@ -344,46 +569,80 @@ export function AuthProvider({
       if (
         typeof window !== 'undefined'
       ) {
+
         localStorage.removeItem(
           'token'
         );
+
       }
 
+
       setUser(null);
+
     }
+
   };
+
 
   const value = {
+
     user,
+
     loading,
-    isAuthenticated: !!user,
+
+    isAuthenticated:
+      !!user,
+
     login,
+
     register,
+
     managerSetup,
+
     logout,
+
     checkAuth
+
   };
 
+
   return (
+
     <AuthContext.Provider
       value={value}
     >
+
       {children}
+
     </AuthContext.Provider>
+
   );
+
 }
 
-export function useAuth() {
-  const context =
-    useContext(AuthContext);
 
-  if (context === undefined) {
+export function useAuth() {
+
+  const context =
+    useContext(
+      AuthContext
+    );
+
+
+  if (
+    context === undefined
+  ) {
+
     throw new Error(
       'useAuth must be used within an AuthProvider'
     );
+
   }
 
+
   return context;
+
 }
+
 
 export default AuthContext;

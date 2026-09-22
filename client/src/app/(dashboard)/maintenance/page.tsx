@@ -1,6 +1,14 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+
+import { useAuth } from '@/hooks/useAuth';
+import { useEmergency } from '@/hooks/useEmergency';
+import { useToast } from '@/hooks/use-toast';
+
+import api from '@/lib/api';
 
 import {
   Card,
@@ -10,1823 +18,1984 @@ import {
 } from '@/components/ui/card';
 
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 import {
-  StatusBadge,
-  paymentStatusVariant,
-} from '@/components/ui/status-badge';
-
-import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/hooks/useAuth';
-import api from '@/lib/api';
-
-import {
-  Maintenance,
-  PaymentLog,
-} from '@/types';
+  PaymentCard,
+  ComplaintsWidget,
+  AssetStatusWidget,
+  EmergencyBanner,
+  EmergencyButton,
+} from '@/components/dashboard';
 
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-
-import {
-  CreditCard,
-  Loader2,
-  Download,
+  AlertTriangle,
+  Users,
+  BarChart3,
   FileText,
+  Settings,
+  Activity,
+  Calendar,
+  Phone,
+  Mail,
+  MapPin,
+  Shield,
+  Zap,
+  Building2,
+  Crown,
+  CheckCircle,
+  XCircle,
+  ArrowRight,
+  RefreshCw,
+  UserCog,
 } from 'lucide-react';
 
-import {
-  generateReceiptPDF,
-} from '@/lib/generateReceipt';
 
+// ============================================================
+// DASHBOARD DATA TYPES
+// ============================================================
 
-declare global {
-  interface Window {
-    Razorpay: new (
-      options: RazorpayOptions
-    ) => RazorpayInstance;
-  }
+interface DashboardMaintenance {
+  amount: number;
+  dueDate: string;
+  status: 'pending' | 'paid' | 'overdue';
+  lateFeesApplied: number;
+}
+
+interface DashboardComplaints {
+  openCount: number;
+  inProgressCount: number;
+}
+
+interface DashboardData {
+  maintenance: DashboardMaintenance;
+  complaints: DashboardComplaints;
 }
 
 
-interface RazorpayOptions {
-  key: string;
-  amount: number;
-  currency: string;
+// ============================================================
+// SOCIETY TYPE
+// ============================================================
+
+interface Society {
+  _id: string;
   name: string;
-  description: string;
-  order_id: string;
+  society_code: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  contact_number?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 
-  handler: (
-    response: RazorpayResponse
-  ) => void;
-
-  prefill: {
-    name: string;
-    email: string;
-    contact: string;
-  };
-
-  theme: {
-    color: string;
-  };
-
-  modal?: {
-    ondismiss?: () => void;
-  };
+  // Added for dashboard display
+  totalUsers?: number;
 }
 
 
-interface RazorpayInstance {
-  open: () => void;
-  close: () => void;
+// ============================================================
+// SOCIETY STATS TYPE
+// ============================================================
+
+interface SocietyStats {
+  totalUsers: number;
+  activeUsers: number;
+  inactiveUsers: number;
+  residents: number;
+  admins: number;
+  managers: number;
+  watchmen: number;
 }
 
 
-interface RazorpayResponse {
-  razorpay_order_id: string;
-  razorpay_payment_id: string;
-  razorpay_signature: string;
-}
+// ============================================================
+// DEFAULT DATA
+// ============================================================
 
-
-interface OrderData {
-  order_id: string;
-  amount: number;
-  currency: string;
-  key_id: string;
-
+const DEFAULT_DATA: DashboardData = {
   maintenance: {
-    id: string;
-    month: number;
-    year: number;
-    flat_no: string;
-    total_amount: number;
-  };
+    amount: 0,
+    dueDate: new Date().toISOString(),
+    status: 'pending',
+    lateFeesApplied: 0,
+  },
 
-  prefill: {
-    name: string;
-    email: string;
-    contact: string;
-  };
-}
+  complaints: {
+    openCount: 0,
+    inProgressCount: 0,
+  },
+};
 
 
-export default function MaintenancePage() {
+// ============================================================
+// DASHBOARD PAGE
+// ============================================================
 
-  const { user } = useAuth();
+export default function DashboardPage() {
+  const router = useRouter();
+
+  const {
+    user,
+    loading,
+  } = useAuth();
 
   const { toast } = useToast();
 
+  const {
+    activeEmergency,
+    loading: emergencyLoading,
+    triggerEmergency,
+    resolveEmergency,
+    triggerLoading,
+    resolveLoading,
+  } = useEmergency();
+
+
+  // ==========================================================
+  // STATE
+  // ==========================================================
 
   const [
-    currentMaintenance,
-    setCurrentMaintenance
-  ] =
-    useState<Maintenance | null>(null);
-
+    dashboardData,
+    setDashboardData,
+  ] = useState<DashboardData>(DEFAULT_DATA);
 
   const [
-    maintenanceHistory,
-    setMaintenanceHistory
-  ] =
-    useState<Maintenance[]>([]);
+    dataLoading,
+    setDataLoading,
+  ] = useState(true);
 
 
-  const [
-    paymentHistory,
-    setPaymentHistory
-  ] =
-    useState<PaymentLog[]>([]);
-
+  // ==========================================================
+  // SUPER ADMIN STATE
+  // ==========================================================
 
   const [
-    loading,
-    setLoading
-  ] =
-    useState(true);
-
+    societies,
+    setSocieties,
+  ] = useState<Society[]>([]);
 
   const [
-    paying,
-    setPaying
-  ] =
-    useState(false);
-
+    societiesLoading,
+    setSocietiesLoading,
+  ] = useState(false);
 
   const [
-    showSuccess,
-    setShowSuccess
-  ] =
-    useState(false);
-
+    selectedSociety,
+    setSelectedSociety,
+  ] = useState<Society | null>(null);
 
   const [
-    lastPayment,
-    setLastPayment
-  ] =
-    useState<{
+    selectedSocietyStats,
+    setSelectedSocietyStats,
+  ] = useState<SocietyStats | null>(null);
 
-      transaction_id: string;
-
-      amount: number;
-
-      month: number;
-
-      year: number;
-
-    } | null>(null);
+  const [
+    statsLoading,
+    setStatsLoading,
+  ] = useState(false);
 
 
-  // ============================================================
-  // LOAD RAZORPAY
-  // ============================================================
+  // ==========================================================
+  // ROLE CHECKS
+  // ==========================================================
 
-  useEffect(() => {
+  const isSuperAdmin =
+    user?.role === 'super_admin';
 
-    const scriptUrl =
-      'https://checkout.razorpay.com/v1/checkout.js';
+  const isManager =
+    user?.role === 'manager';
 
-
-    const existingScript =
-      document.querySelector(
-        `script[src="${scriptUrl}"]`
-      );
-
-
-    if (existingScript) {
-      return;
-    }
-
-
-    const script =
-      document.createElement('script');
-
-
-    script.src =
-      scriptUrl;
-
-    script.async =
-      true;
-
-
-    document.body.appendChild(
-      script
+  const isAdmin =
+    !!user &&
+    ['manager', 'admin'].includes(
+      user.role
     );
 
-
-    return () => {
-
-      if (
-        document.body.contains(
-          script
-        )
-      ) {
-
-        document.body.removeChild(
-          script
-        );
-
-      }
-
-    };
-
-  }, []);
-
-
-  // ============================================================
-  // FETCH DATA
-  // ============================================================
-
-  const fetchData =
-    useCallback(
-      async () => {
-
-        try {
-
-          setLoading(true);
-
-
-          const [
-            currentResult,
-            historyResult,
-            paymentResult,
-          ] =
-            await Promise.allSettled([
-
-              api.get(
-                '/maintenance/current'
-              ),
-
-              api.get(
-                '/maintenance?status='
-              ),
-
-              api.get(
-                '/maintenance/history'
-              ),
-
-            ]);
-
-
-          // ----------------------------------------------------
-          // CURRENT MAINTENANCE
-          // ----------------------------------------------------
-
-          if (
-            currentResult.status ===
-            'fulfilled'
-          ) {
-
-            const response =
-              currentResult.value;
-
-
-            if (
-              response.data?.success
-            ) {
-
-              setCurrentMaintenance(
-                response.data.data ||
-                null
-              );
-
-            } else {
-
-              setCurrentMaintenance(
-                null
-              );
-
-            }
-
-          } else {
-
-            setCurrentMaintenance(
-              null
-            );
-
-
-            console.error(
-              'Current maintenance error:',
-              currentResult.reason
-            );
-
-          }
-
-
-          // ----------------------------------------------------
-          // MAINTENANCE HISTORY
-          // ----------------------------------------------------
-
-          if (
-            historyResult.status ===
-            'fulfilled'
-          ) {
-
-            const response =
-              historyResult.value;
-
-
-            if (
-              response.data?.success
-            ) {
-
-              setMaintenanceHistory(
-                response.data.data ||
-                []
-              );
-
-            } else {
-
-              setMaintenanceHistory(
-                []
-              );
-
-            }
-
-          } else {
-
-            setMaintenanceHistory(
-              []
-            );
-
-
-            console.error(
-              'Maintenance history error:',
-              historyResult.reason
-            );
-
-          }
-
-
-          // ----------------------------------------------------
-          // PAYMENT HISTORY
-          // ----------------------------------------------------
-
-          if (
-            paymentResult.status ===
-            'fulfilled'
-          ) {
-
-            const response =
-              paymentResult.value;
-
-
-            if (
-              response.data?.success
-            ) {
-
-              setPaymentHistory(
-                response.data.data ||
-                []
-              );
-
-            } else {
-
-              setPaymentHistory(
-                []
-              );
-
-            }
-
-          } else {
-
-            setPaymentHistory(
-              []
-            );
-
-
-            console.error(
-              'Payment history error:',
-              paymentResult.reason
-            );
-
-          }
-
-
-          const allFailed =
-            currentResult.status ===
-              'rejected' &&
-
-            historyResult.status ===
-              'rejected' &&
-
-            paymentResult.status ===
-              'rejected';
-
-
-          if (allFailed) {
-
-            toast({
-
-              title:
-                'Error',
-
-              description:
-                'Failed to load maintenance data. Please refresh the page.',
-
-              variant:
-                'destructive',
-
-            });
-
-          }
-
-        } catch (error) {
-
-          console.error(
-            'Error fetching maintenance data:',
-            error
-          );
-
-
-          toast({
-
-            title:
-              'Error',
-
-            description:
-              'Failed to load maintenance data',
-
-            variant:
-              'destructive',
-
-          });
-
-        } finally {
-
-          setLoading(false);
-
-        }
-
-      },
-      [toast]
-    );
-
-
-  // ============================================================
-  // LOAD DATA
-  //
-  // Resident + Admin + Manager
-  // ============================================================
+  const societyName =
+    (user as typeof user & {
+      society?: {
+        name?: string;
+      } | null;
+      society_name?: string;
+    })?.society?.name ||
+    (user as typeof user & {
+      society_name?: string;
+    })?.society_name ||
+    'Society Management';
+
+
+  // ==========================================================
+  // REDIRECT WATCHMAN
+  // ==========================================================
 
   useEffect(() => {
-
-    if (!user) {
-      return;
-    }
-
-
     if (
-      [
-        'resident',
-        'admin',
-        'manager'
-      ].includes(
-        user.role
-      )
+      !loading &&
+      user?.role === 'watchman'
     ) {
-
-      fetchData();
-
-    } else {
-
-      setLoading(false);
-
+      router.replace('/watchman');
     }
-
   }, [
     user,
-    fetchData,
+    loading,
+    router,
   ]);
 
 
-  // ============================================================
-  // PAY MAINTENANCE
-  // ============================================================
+  // ==========================================================
+  // FETCH SUPER ADMIN SOCIETIES
+  // ==========================================================
 
-  const handlePayNow =
-    async (
-      maintenance: Maintenance
-    ) => {
+  const fetchSocieties = async (
+    showToast = false
+  ) => {
+    try {
+      setSocietiesLoading(true);
+
+      const response =
+        await api.get('/societies');
 
       if (
-        !window.Razorpay
+        response.data?.success
       ) {
+        const societyData: Society[] =
+          response.data.data || [];
 
-        toast({
+        // ----------------------------------------------------
+        // Fetch user count for every society
+        // ----------------------------------------------------
 
-          title:
-            'Error',
+        const societiesWithStats =
+          await Promise.all(
+            societyData.map(
+              async (society) => {
+                try {
+                  const statsResponse =
+                    await api.get(
+                      `/societies/${society._id}/stats`
+                    );
 
-          description:
-            'Payment system not loaded. Please refresh the page.',
-
-          variant:
-            'destructive',
-
-        });
-
-        return;
-
-      }
-
-
-      try {
-
-        setPaying(true);
-
-
-        const orderRes =
-          await api.post(
-
-            '/maintenance/create-order',
-
-            {
-              maintenance_id:
-                maintenance._id,
-            }
-
-          );
-
-
-        if (
-          !orderRes.data?.success
-        ) {
-
-          throw new Error(
-
-            orderRes.data?.message ||
-            'Failed to create order'
-
-          );
-
-        }
-
-
-        const orderData:
-          OrderData =
-          orderRes.data.data;
-
-
-        const options:
-          RazorpayOptions = {
-
-          key:
-            orderData.key_id,
-
-          amount:
-            orderData.amount,
-
-          currency:
-            orderData.currency,
-
-          name:
-            'Smart Society',
-
-          description:
-            `Maintenance for ${getMonthName(
-              orderData.maintenance.month
-            )} ${orderData.maintenance.year}`,
-
-          order_id:
-            orderData.order_id,
-
-
-          handler:
-            async (
-              response:
-                RazorpayResponse
-            ) => {
-
-              try {
-
-                const verifyRes =
-                  await api.post(
-
-                    '/payment/verify',
-
-                    {
-
-                      razorpay_order_id:
-                        response.razorpay_order_id,
-
-                      razorpay_payment_id:
-                        response.razorpay_payment_id,
-
-                      razorpay_signature:
-                        response.razorpay_signature,
-
-                      maintenance_id:
-                        maintenance._id,
-
-                    }
-
-                  );
-
-
-                if (
-                  !verifyRes.data?.success
-                ) {
-
-                  throw new Error(
-
-                    verifyRes.data?.message ||
-                    'Payment verification failed'
-
-                  );
-
+                  return {
+                    ...society,
+                    totalUsers:
+                      Number(
+                        statsResponse.data?.data
+                          ?.totalUsers || 0
+                      ),
+                  };
+                } catch {
+                  return {
+                    ...society,
+                    totalUsers: 0,
+                  };
                 }
-
-
-                setLastPayment({
-
-                  transaction_id:
-                    response.razorpay_payment_id,
-
-                  amount:
-                    orderData.maintenance.total_amount,
-
-                  month:
-                    orderData.maintenance.month,
-
-                  year:
-                    orderData.maintenance.year,
-
-                });
-
-
-                setShowSuccess(
-                  true
-                );
-
-
-                await fetchData();
-
-
-                toast({
-
-                  title:
-                    'Payment Successful! 🎉',
-
-                  description:
-                    'Your maintenance payment has been received.',
-
-                });
-
-              } catch (error) {
-
-                console.error(
-                  'Payment verification error:',
-                  error
-                );
-
-
-                toast({
-
-                  title:
-                    'Verification Failed',
-
-                  description:
-                    'Payment received but verification failed. Please contact support.',
-
-                  variant:
-                    'destructive',
-
-                });
-
-              } finally {
-
-                setPaying(false);
-
               }
-
-            },
-
-
-          prefill: {
-
-            name:
-              orderData.prefill.name,
-
-            email:
-              orderData.prefill.email,
-
-            contact:
-              orderData.prefill.contact,
-
-          },
-
-
-          theme: {
-
-            color:
-              '#0D9488',
-
-          },
-
-
-          modal: {
-
-            ondismiss: () => {
-
-              setPaying(
-                false
-              );
-
-            },
-
-          },
-
-        };
-
-
-        const razorpay =
-          new window.Razorpay(
-            options
+            )
           );
 
-
-        razorpay.open();
-
-      } catch (error) {
-
-        console.error(
-          'Payment error:',
-          error
+        setSocieties(
+          societiesWithStats
         );
 
+        // ----------------------------------------------------
+        // Keep selected society
+        // ----------------------------------------------------
+
+        setSelectedSociety(
+          (previous) => {
+            if (
+              previous
+            ) {
+              const updated =
+                societiesWithStats.find(
+                  (society) =>
+                    society._id ===
+                    previous._id
+                );
+
+              if (updated) {
+                return updated;
+              }
+            }
+
+            return (
+              societiesWithStats[0] ||
+              null
+            );
+          }
+        );
+
+        if (showToast) {
+          toast({
+            title: 'Refreshed',
+            description:
+              'Society data has been refreshed.',
+          });
+        }
+      }
+
+    } catch (error: any) {
+      console.error(
+        'Failed to fetch societies:',
+        error
+      );
+
+      toast({
+        title: 'Societies Error',
+        description:
+          error?.response?.data?.message ||
+          'Failed to load societies.',
+        variant: 'destructive',
+      });
+
+    } finally {
+      setSocietiesLoading(false);
+    }
+  };
+
+
+  // ==========================================================
+  // LOAD SOCIETIES
+  // ==========================================================
+
+  useEffect(() => {
+    if (
+      loading ||
+      !user ||
+      user.role !== 'super_admin'
+    ) {
+      return;
+    }
+
+    fetchSocieties();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    loading,
+    user,
+  ]);
+
+
+  // ==========================================================
+  // FETCH SELECTED SOCIETY STATS
+  // ==========================================================
+
+  useEffect(() => {
+    if (
+      loading ||
+      !user ||
+      user.role !== 'super_admin' ||
+      !selectedSociety
+    ) {
+      return;
+    }
+
+    const fetchSocietyStats =
+      async () => {
+        try {
+          setStatsLoading(true);
+
+          const response =
+            await api.get(
+              `/societies/${selectedSociety._id}/stats`
+            );
+
+          if (
+            response.data?.success
+          ) {
+            setSelectedSocietyStats(
+              response.data.data
+            );
+          } else {
+            setSelectedSocietyStats(
+              null
+            );
+          }
+
+        } catch (error) {
+          console.error(
+            'Failed to fetch society stats:',
+            error
+          );
+
+          setSelectedSocietyStats(
+            null
+          );
+
+        } finally {
+          setStatsLoading(false);
+        }
+      };
+
+    fetchSocietyStats();
+
+  }, [
+    loading,
+    user,
+    selectedSociety,
+  ]);
+
+
+  // ==========================================================
+  // FETCH NORMAL USER DASHBOARD DATA
+  // ==========================================================
+
+  useEffect(() => {
+    if (
+      loading ||
+      !user ||
+      user.role === 'super_admin' ||
+      user.role === 'watchman'
+    ) {
+      setDataLoading(false);
+      return;
+    }
+
+    const fetchDashboardData =
+      async () => {
+        try {
+          setDataLoading(true);
+
+          // --------------------------------------------------
+          // Maintenance
+          // --------------------------------------------------
+
+          const maintenanceResponse =
+            await api.get(
+              '/maintenance/current'
+            );
+
+          if (
+            maintenanceResponse.data
+              ?.success
+          ) {
+            const maintenance =
+              maintenanceResponse.data
+                .data;
+
+            setDashboardData(
+              (prev) => ({
+                ...prev,
+
+                maintenance: {
+                  amount:
+                    Number(
+                      maintenance
+                        ?.total_amount || 0
+                    ),
+
+                  dueDate:
+                    maintenance
+                      ?.due_date ||
+                    new Date()
+                      .toISOString(),
+
+                  status:
+                    maintenance
+                      ?.status ||
+                    'pending',
+
+                  lateFeesApplied:
+                    Number(
+                      maintenance
+                        ?.late_fee || 0
+                    ),
+                },
+              })
+            );
+          }
+
+
+          // --------------------------------------------------
+          // Complaints
+          // --------------------------------------------------
+
+          try {
+            const complaintsResponse =
+              await api.get(
+                '/complaints'
+              );
+
+            if (
+              complaintsResponse
+                .data?.success
+            ) {
+              const complaintData =
+                complaintsResponse.data
+                  .data || [];
+
+              const openCount =
+                complaintData.filter(
+                  (complaint: any) =>
+                    complaint.status ===
+                    'open'
+                ).length;
+
+              const inProgressCount =
+                complaintData.filter(
+                  (complaint: any) =>
+                    complaint.status ===
+                    'in-progress'
+                ).length;
+
+              setDashboardData(
+                (prev) => ({
+                  ...prev,
+
+                  complaints: {
+                    openCount,
+                    inProgressCount,
+                  },
+                })
+              );
+            }
+
+          } catch (
+            complaintError
+          ) {
+            console.error(
+              'Failed to fetch complaints:',
+              complaintError
+            );
+          }
+
+        } catch (error) {
+          console.error(
+            'Failed to fetch dashboard data:',
+            error
+          );
+
+          toast({
+            title: 'Dashboard Error',
+            description:
+              'Failed to load latest dashboard data.',
+            variant:
+              'destructive',
+          });
+
+        } finally {
+          setDataLoading(false);
+        }
+      };
+
+    fetchDashboardData();
+
+  }, [
+    loading,
+    user,
+    toast,
+  ]);
+
+
+  // ==========================================================
+  // SUPER ADMIN REFRESH
+  // ==========================================================
+
+  const handleRefreshSocieties =
+    async () => {
+      await fetchSocieties(true);
+    };
+
+
+  // ==========================================================
+  // SCROLL TO SOCIETIES
+  // ==========================================================
+
+  const handleOpenSocieties =
+    () => {
+      const element =
+        document.getElementById(
+          'societies-section'
+        );
+
+      if (element) {
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }
+    };
+
+
+  const handleOpenUsers =
+    () => {
+      router.push('/admin/users');
+    };
+
+
+  const handleOpenPayments =
+    () => {
+      router.push('/admin/payments');
+    };
+
+
+  const handleOpenComplaints =
+    () => {
+      router.push('/admin/complaints');
+    };
+
+
+  // ==========================================================
+  // SELECT SOCIETY
+  // ==========================================================
+
+  const handleSelectSociety =
+    (
+      society: Society
+    ) => {
+      setSelectedSociety(
+        society
+      );
+
+      setTimeout(() => {
+        const element =
+          document.getElementById(
+            'selected-society-section'
+          );
+
+        if (element) {
+          element.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          });
+        }
+      }, 100);
+    };
+
+
+  // ==========================================================
+  // EMERGENCY TRIGGER
+  // ==========================================================
+
+  const handleTriggerEmergency =
+    async (
+      notes?: string
+    ) => {
+      try {
+        await triggerEmergency(
+          notes
+        );
 
         toast({
-
           title:
-            'Payment Failed',
-
+            'Emergency Alert Sent',
           description:
-            error instanceof Error
-              ? error.message
-              : 'Failed to initiate payment',
-
-          variant:
-            'destructive',
-
+            'All residents and staff have been notified.',
         });
 
-
-        setPaying(false);
-
+      } catch (error: any) {
+        toast({
+          title:
+            'Failed to send alert',
+          description:
+            error?.message ||
+            'Please try again',
+          variant:
+            'destructive',
+        });
       }
-
     };
 
 
-  // ============================================================
-  // HELPERS
-  // ============================================================
+  // ==========================================================
+  // EMERGENCY RESOLVE
+  // ==========================================================
 
-  const getMonthName =
-    (
-      month: number
+  const handleResolveEmergency =
+    async (
+      id: string
     ) => {
-
-      const months = [
-
-        'January',
-
-        'February',
-
-        'March',
-
-        'April',
-
-        'May',
-
-        'June',
-
-        'July',
-
-        'August',
-
-        'September',
-
-        'October',
-
-        'November',
-
-        'December',
-
-      ];
-
-
-      return (
-        months[
-          month - 1
-        ] ||
-        'Unknown'
-      );
-
-    };
-
-
-  const formatDate =
-    (
-      dateStr: string
-    ) =>
-
-      new Date(
-        dateStr
-      ).toLocaleDateString(
-        'en-IN',
-        {
-
-          day:
-            'numeric',
-
-          month:
-            'short',
-
-          year:
-            'numeric',
-
-        }
-      );
-
-
-  const formatAmount =
-    (
-      amount: number
-    ) =>
-
-      new Intl.NumberFormat(
-        'en-IN',
-        {
-
-          style:
-            'currency',
-
-          currency:
-            'INR',
-
-          minimumFractionDigits:
-            0,
-
-        }
-      ).format(
-        amount
-      );
-
-
-  // ============================================================
-  // DOWNLOAD PAYMENT RECEIPT
-  // ============================================================
-
-  const handleDownloadReceipt =
-    (
-      payment: PaymentLog
-    ) => {
-
-      generateReceiptPDF({
-
-        transactionId:
-          payment.transaction_id,
-
-        amount:
-          payment.amount,
-
-        month:
-          payment.month,
-
-        year:
-          payment.year,
-
-        flatNo:
-          user?.flat_no ||
-          '',
-
-        paymentDate:
-          payment.payment_date,
-
-        userName:
-          user?.name ||
-          '',
-
-      });
-
-
-      toast({
-
-        title:
-          'Receipt Downloaded',
-
-        description:
-          'Your payment receipt has been downloaded successfully.',
-
-      });
-
-    };
-
-
-  // ============================================================
-  // DOWNLOAD MAINTENANCE RECEIPT
-  // ============================================================
-
-  const downloadMaintenanceReceipt =
-    (
-      maintenance:
-        Maintenance
-    ) => {
-
-      generateReceiptPDF({
-
-        transactionId:
-          maintenance.razorpay_payment_id ||
-          'N/A',
-
-        amount:
-          maintenance.total_amount,
-
-        month:
-          maintenance.month,
-
-        year:
-          maintenance.year,
-
-        flatNo:
-          maintenance.flat_no,
-
-        paymentDate:
-          maintenance.paid_date ||
-          new Date().toISOString(),
-
-        userName:
-          user?.name ||
-          '',
-
-        lateFee:
-          maintenance.late_fee,
-
-      });
-
-
-      toast({
-
-        title:
-          'Receipt Downloaded',
-
-        description:
-          'Your payment receipt has been downloaded.',
-
-      });
-
-    };
-
-
-  // ============================================================
-  // DOWNLOAD CURRENT RECEIPT
-  // ============================================================
-
-  const handleDownloadCurrentReceipt =
-    () => {
-
-      if (!lastPayment) {
-        return;
+      try {
+        await resolveEmergency(
+          id
+        );
+
+        toast({
+          title:
+            'Emergency Resolved',
+          description:
+            'All residents have been notified.',
+        });
+
+      } catch (error: any) {
+        toast({
+          title:
+            'Failed to resolve',
+          description:
+            error?.message ||
+            'Please try again',
+          variant:
+            'destructive',
+        });
       }
-
-
-      generateReceiptPDF({
-
-        transactionId:
-          lastPayment.transaction_id,
-
-        amount:
-          lastPayment.amount,
-
-        month:
-          lastPayment.month,
-
-        year:
-          lastPayment.year,
-
-        flatNo:
-          user?.flat_no ||
-          '',
-
-        paymentDate:
-          new Date().toISOString(),
-
-        userName:
-          user?.name ||
-          '',
-
-      });
-
-
-      toast({
-
-        title:
-          'Receipt Downloaded',
-
-        description:
-          'Your payment receipt has been downloaded successfully.',
-
-      });
-
     };
 
 
-  // ============================================================
-  // LOADING
-  // ============================================================
+  // ==========================================================
+  // AUTH LOADING
+  // ==========================================================
 
-  if (
-    loading ||
-    !user
-  ) {
-
+  if (loading) {
     return (
-
-      <div className="space-y-6">
-
-        <div>
-
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            Maintenance
-          </h1>
-
-          <p className="text-gray-600 mt-1">
-            View and pay your maintenance dues
-          </p>
-
-        </div>
-
-
-        <Card>
-
-          <CardContent className="pt-6">
-
-            <div className="animate-pulse space-y-4">
-
-              <div className="h-8 bg-gray-200 rounded w-32" />
-
-              <div className="h-12 bg-gray-200 rounded w-24" />
-
-              <div className="h-10 bg-gray-200 rounded w-full" />
-
-            </div>
-
-          </CardContent>
-
-        </Card>
-
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div
+          className="
+            w-10
+            h-10
+            rounded-full
+            border-4
+            border-blue-100
+            border-t-blue-600
+            animate-spin
+          "
+        />
       </div>
-
     );
-
   }
 
 
-  // ============================================================
-  // UNSUPPORTED ROLES
-  //
-  // Super Admin / Watchman
-  // ============================================================
+  // ==========================================================
+  // SUPER ADMIN DASHBOARD
+  // ==========================================================
 
-  if (
-    ![
-      'resident',
-      'admin',
-      'manager'
-    ].includes(
-      user.role
-    )
-  ) {
+  if (isSuperAdmin) {
+
+    const totalSocieties =
+      societies.length;
+
+    const activeSocieties =
+      societies.filter(
+        (society) =>
+          society.is_active
+      ).length;
+
+    const inactiveSocieties =
+      societies.filter(
+        (society) =>
+          !society.is_active
+      ).length;
+
+    const totalUsers =
+      societies.reduce(
+        (
+          total,
+          society
+        ) =>
+          total +
+          Number(
+            society.totalUsers || 0
+          ),
+        0
+      );
+
 
     return (
+      <div className="space-y-8">
 
-      <div className="space-y-6">
+        {/* ==================================================
+            SUPER ADMIN HEADER
+        ================================================== */}
 
-        <div>
-
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            Maintenance
-          </h1>
-
-          <p className="text-gray-600 mt-1">
-            Personal maintenance is not available for this account.
-          </p>
-
-        </div>
-
-      </div>
-
-    );
-
-  }
-
-
-  // ============================================================
-  // MAIN UI
-  // ============================================================
-
-  return (
-
-    <div className="space-y-5 sm:space-y-6 w-full min-w-0">
-
-      {/* Header */}
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
-        <div>
-
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            Maintenance
-          </h1>
-
-          <p className="text-gray-600 mt-1 text-sm sm:text-base">
-            View and pay your maintenance dues
-          </p>
-
-        </div>
-
-      </div>
-
-
-      {/* Current Maintenance */}
-
-      {currentMaintenance && (
-
-        <Card
-          className={
-            currentMaintenance.status === 'overdue'
-              ? 'border-red-200 bg-red-50/50'
-              : currentMaintenance.status === 'paid'
-              ? 'border-green-200 bg-green-50/50'
-              : ''
-          }
+        <div
+          className="
+            flex
+            flex-col
+            md:flex-row
+            md:items-center
+            md:justify-between
+            gap-4
+          "
         >
 
-          <CardHeader className="pb-4">
+          <div>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div
+              className="
+                flex
+                items-center
+                gap-3
+              "
+            >
 
-              <CardTitle className="text-lg sm:text-xl">
-
-                {getMonthName(
-                  currentMaintenance.month
-                )}{' '}
-
-                {currentMaintenance.year}
-
-              </CardTitle>
-
-
-              <div className="self-start sm:self-auto">
-
-                <StatusBadge
-                  variant={
-                    paymentStatusVariant[
-                      currentMaintenance.status
-                    ]
-                  }
-                  dot
-                >
-
-                  {currentMaintenance.status === 'paid'
-                    ? 'Paid'
-                    : currentMaintenance.status === 'overdue'
-                    ? 'Overdue'
-                    : 'Pending'}
-
-                </StatusBadge>
-
+              <div
+                className="
+                  w-12
+                  h-12
+                  rounded-xl
+                  bg-gradient-to-br
+                  from-red-500
+                  to-red-700
+                  flex
+                  items-center
+                  justify-center
+                  shadow-lg
+                "
+              >
+                <Crown
+                  className="
+                    w-6
+                    h-6
+                    text-white
+                  "
+                />
               </div>
 
-            </div>
+              <div>
 
-          </CardHeader>
-
-
-          <CardContent className="space-y-5">
-
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-
-              <div className="min-w-0">
-
-                <p className="text-sm text-gray-500">
-                  Total Amount
-                </p>
-
+                <h1
+                  className="
+                    text-2xl
+                    sm:text-3xl
+                    font-bold
+                    text-slate-900
+                  "
+                >
+                  Super Admin Dashboard
+                </h1>
 
                 <p
-                  className={`text-3xl sm:text-4xl font-bold ${
-                    currentMaintenance.status === 'paid'
-                      ? 'text-green-600'
-                      : currentMaintenance.status === 'overdue'
-                      ? 'text-red-600'
-                      : 'text-primary'
-                  }`}
+                  className="
+                    text-slate-500
+                    mt-1
+                  "
                 >
-
-                  {formatAmount(
-                    currentMaintenance.total_amount
-                  )}
-
-                </p>
-
-
-                {currentMaintenance.late_fee > 0 && (
-
-                  <p className="text-xs text-red-600 mt-1">
-
-                    Includes{' '}
-
-                    {formatAmount(
-                      currentMaintenance.late_fee
-                    )}{' '}
-
-                    late fee
-
-                  </p>
-
-                )}
-
-              </div>
-
-
-              <div className="sm:text-right">
-
-                <p className="text-sm text-gray-500">
-                  Flat No.
-                </p>
-
-                <p className="text-2xl sm:text-3xl font-semibold text-gray-900">
-                  {currentMaintenance.flat_no}
+                  Manage all societies and their users
                 </p>
 
               </div>
 
             </div>
 
+          </div>
 
-            {/* Pay Now */}
 
-            {currentMaintenance.status !== 'paid' && (
+          <Button
+            onClick={
+              handleRefreshSocieties
+            }
+            disabled={
+              societiesLoading
+            }
+            variant="outline"
+            className="gap-2"
+          >
 
-              <div className="flex flex-col gap-4 pt-4 border-t sm:flex-row sm:items-center sm:justify-between">
+            <RefreshCw
+              className={`
+                w-4
+                h-4
+                ${
+                  societiesLoading
+                    ? 'animate-spin'
+                    : ''
+                }
+              `}
+            />
+
+            Refresh
+
+          </Button>
+
+        </div>
+
+
+        {/* ==================================================
+            SUPER ADMIN INFO
+        ================================================== */}
+
+        <div
+          className="
+            flex
+            items-center
+            gap-3
+            p-4
+            rounded-xl
+            bg-red-50
+            border
+            border-red-100
+          "
+        >
+
+          <Shield
+            className="
+              w-5
+              h-5
+              text-red-600
+            "
+          />
+
+          <div>
+
+            <p
+              className="
+                font-semibold
+                text-red-800
+              "
+            >
+              Super Administrator
+            </p>
+
+            <p
+              className="
+                text-sm
+                text-red-600
+              "
+            >
+              {user?.email}
+            </p>
+
+          </div>
+
+        </div>
+
+
+        {/* ==================================================
+            OVERVIEW CARDS
+        ================================================== */}
+
+        <div
+          className="
+            grid
+            grid-cols-1
+            sm:grid-cols-2
+            lg:grid-cols-4
+            gap-6
+          "
+        >
+
+          {/* Total Societies */}
+
+          <Card
+            className="
+              border-0
+              shadow-sm
+            "
+          >
+
+            <CardContent
+              className="p-6"
+            >
+
+              <div
+                className="
+                  flex
+                  items-center
+                  justify-between
+                "
+              >
 
                 <div>
 
-                  <p className="text-sm text-gray-500">
-                    Due Date
+                  <p
+                    className="
+                      text-sm
+                      text-slate-500
+                    "
+                  >
+                    Total Societies
                   </p>
 
                   <p
-                    className={`font-medium ${
-                      currentMaintenance.status === 'overdue'
-                        ? 'text-red-600'
-                        : 'text-gray-900'
-                    }`}
+                    className="
+                      text-3xl
+                      font-bold
+                      text-slate-900
+                      mt-2
+                    "
                   >
-
-                    {formatDate(
-                      currentMaintenance.due_date
-                    )}
-
+                    {totalSocieties}
                   </p>
 
                 </div>
 
-
-                <Button
-                  onClick={() =>
-                    handlePayNow(
-                      currentMaintenance
-                    )
-                  }
-                  disabled={paying}
-                  size="lg"
-                  className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
+                <div
+                  className="
+                    w-12
+                    h-12
+                    rounded-xl
+                    bg-blue-100
+                    flex
+                    items-center
+                    justify-center
+                  "
                 >
 
-                  {paying ? (
+                  <Building2
+                    className="
+                      w-6
+                      h-6
+                      text-blue-600
+                    "
+                  />
 
-                    <>
-
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-
-                      Processing...
-
-                    </>
-
-                  ) : (
-
-                    <>
-
-                      <CreditCard className="w-4 h-4 mr-2" />
-
-                      Pay Now
-
-                    </>
-
-                  )}
-
-                </Button>
+                </div>
 
               </div>
 
-            )}
+            </CardContent>
+
+          </Card>
 
 
-            {/* Paid */}
+          {/* Active Societies */}
 
-            {currentMaintenance.status === 'paid' &&
-              currentMaintenance.paid_date && (
+          <Card
+            className="
+              border-0
+              shadow-sm
+            "
+          >
 
-                <div className="flex items-center gap-2 text-green-600 text-sm pt-3 border-t border-green-200">
+            <CardContent
+              className="p-6"
+            >
 
-                  <svg
-                    className="w-5 h-5 flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+              <div
+                className="
+                  flex
+                  items-center
+                  justify-between
+                "
+              >
+
+                <div>
+
+                  <p
+                    className="
+                      text-sm
+                      text-slate-500
+                    "
                   >
+                    Active Societies
+                  </p>
 
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
+                  <p
+                    className="
+                      text-3xl
+                      font-bold
+                      text-slate-900
+                      mt-2
+                    "
+                  >
+                    {activeSocieties}
+                  </p>
 
-                  </svg>
+                </div>
+
+                <div
+                  className="
+                    w-12
+                    h-12
+                    rounded-xl
+                    bg-green-100
+                    flex
+                    items-center
+                    justify-center
+                  "
+                >
+
+                  <CheckCircle
+                    className="
+                      w-6
+                      h-6
+                      text-green-600
+                    "
+                  />
+
+                </div>
+
+              </div>
+
+            </CardContent>
+
+          </Card>
 
 
-                  <span>
+          {/* Inactive Societies */}
 
-                    Paid on{' '}
+          <Card
+            className="
+              border-0
+              shadow-sm
+            "
+          >
 
-                    {formatDate(
-                      currentMaintenance.paid_date
-                    )}
+            <CardContent
+              className="p-6"
+            >
 
-                  </span>
+              <div
+                className="
+                  flex
+                  items-center
+                  justify-between
+                "
+              >
+
+                <div>
+
+                  <p
+                    className="
+                      text-sm
+                      text-slate-500
+                    "
+                  >
+                    Inactive Societies
+                  </p>
+
+                  <p
+                    className="
+                      text-3xl
+                      font-bold
+                      text-slate-900
+                      mt-2
+                    "
+                  >
+                    {inactiveSocieties}
+                  </p>
+
+                </div>
+
+                <div
+                  className="
+                    w-12
+                    h-12
+                    rounded-xl
+                    bg-red-100
+                    flex
+                    items-center
+                    justify-center
+                  "
+                >
+
+                  <XCircle
+                    className="
+                      w-6
+                      h-6
+                      text-red-600
+                    "
+                  />
+
+                </div>
+
+              </div>
+
+            </CardContent>
+
+          </Card>
+
+
+          {/* Users */}
+
+          <Card
+            className="
+              border-0
+              shadow-sm
+            "
+          >
+
+            <CardContent
+              className="p-6"
+            >
+
+              <div
+                className="
+                  flex
+                  items-center
+                  justify-between
+                "
+              >
+
+                <div>
+
+                  <p
+                    className="
+                      text-sm
+                      text-slate-500
+                    "
+                  >
+                    Total Users
+                  </p>
+
+                  <p
+                    className="
+                      text-3xl
+                      font-bold
+                      text-slate-900
+                      mt-2
+                    "
+                  >
+                    {totalUsers}
+                  </p>
+
+                </div>
+
+                <div
+                  className="
+                    w-12
+                    h-12
+                    rounded-xl
+                    bg-purple-100
+                    flex
+                    items-center
+                    justify-center
+                  "
+                >
+
+                  <Users
+                    className="
+                      w-6
+                      h-6
+                      text-purple-600
+                    "
+                  />
+
+                </div>
+
+              </div>
+
+            </CardContent>
+
+          </Card>
+
+        </div>
+
+
+        {/* ==================================================
+            SOCIETY LIST
+        ================================================== */}
+
+        <div
+          id="societies-section"
+          className="scroll-mt-24"
+        >
+
+          <Card
+            className="
+              border-0
+              shadow-sm
+            "
+          >
+
+            <CardHeader>
+
+              <div
+                className="
+                  flex
+                  flex-col
+                  sm:flex-row
+                  sm:items-center
+                  sm:justify-between
+                  gap-3
+                "
+              >
+
+                <CardTitle
+                  className="
+                    flex
+                    items-center
+                    gap-2
+                  "
+                >
+
+                  <Building2
+                    className="
+                      w-5
+                      h-5
+                      text-blue-600
+                    "
+                  />
+
+                  All Societies
+
+                </CardTitle>
+
+                <Badge
+                  variant="outline"
+                  className="
+                    w-fit
+                    bg-blue-50
+                    text-blue-700
+                    border-blue-200
+                  "
+                >
+                  {totalSocieties} Societies
+                </Badge>
+
+              </div>
+
+            </CardHeader>
+
+
+            <CardContent>
+
+              {societiesLoading ? (
+
+                <div
+                  className="
+                    flex
+                    items-center
+                    justify-center
+                    py-16
+                  "
+                >
+
+                  <RefreshCw
+                    className="
+                      w-8
+                      h-8
+                      animate-spin
+                      text-blue-600
+                    "
+                  />
+
+                </div>
+
+              ) : societies.length === 0 ? (
+
+                <div
+                  className="
+                    text-center
+                    py-16
+                  "
+                >
+
+                  <Building2
+                    className="
+                      w-14
+                      h-14
+                      mx-auto
+                      text-slate-300
+                    "
+                  />
+
+                  <h3
+                    className="
+                      mt-4
+                      font-semibold
+                      text-slate-700
+                    "
+                  >
+                    No societies found
+                  </h3>
+
+                  <p
+                    className="
+                      text-sm
+                      text-slate-500
+                      mt-1
+                    "
+                  >
+                    No society has been created yet.
+                  </p>
+
+                </div>
+
+              ) : (
+
+                <div className="space-y-3">
+
+                  {societies.map(
+                    (society) => (
+
+                      <button
+                        key={
+                          society._id
+                        }
+                        type="button"
+                        onClick={() =>
+                          handleSelectSociety(
+                            society
+                          )
+                        }
+                        className={`
+                          w-full
+                          text-left
+                          p-4
+                          rounded-xl
+                          border
+                          transition-all
+                          duration-200
+                          ${
+                            selectedSociety?._id ===
+                            society._id
+                              ? 'border-blue-300 bg-blue-50 shadow-sm'
+                              : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50'
+                          }
+                        `}
+                      >
+
+                        <div
+                          className="
+                            flex
+                            flex-col
+                            md:flex-row
+                            md:items-center
+                            md:justify-between
+                            gap-4
+                          "
+                        >
+
+                          <div
+                            className="
+                              flex
+                              items-center
+                              gap-4
+                            "
+                          >
+
+                            <div
+                              className="
+                                w-12
+                                h-12
+                                rounded-xl
+                                bg-blue-100
+                                flex
+                                items-center
+                                justify-center
+                                flex-shrink-0
+                              "
+                            >
+
+                              <Building2
+                                className="
+                                  w-6
+                                  h-6
+                                  text-blue-600
+                                "
+                              />
+
+                            </div>
+
+
+                            <div>
+
+                              <h3
+                                className="
+                                  font-semibold
+                                  text-slate-900
+                                "
+                              >
+                                {society.name}
+                              </h3>
+
+                              <p
+                                className="
+                                  text-sm
+                                  text-slate-500
+                                  mt-0.5
+                                "
+                              >
+                                Code:{' '}
+                                {
+                                  society.society_code
+                                }
+                              </p>
+
+                              {society.city && (
+                                <p
+                                  className="
+                                    text-xs
+                                    text-slate-400
+                                    mt-1
+                                  "
+                                >
+                                  {society.city}
+                                  {society.state
+                                    ? `, ${society.state}`
+                                    : ''}
+                                </p>
+                              )}
+
+                            </div>
+
+                          </div>
+
+
+                          <div
+                            className="
+                              flex
+                              items-center
+                              gap-3
+                              flex-wrap
+                            "
+                          >
+
+                            <Badge
+                              variant="outline"
+                              className={
+                                society.is_active
+                                  ? 'bg-green-50 text-green-700 border-green-200'
+                                  : 'bg-red-50 text-red-700 border-red-200'
+                              }
+                            >
+                              {society.is_active
+                                ? 'Active'
+                                : 'Inactive'}
+                            </Badge>
+
+
+                            <Badge
+                              variant="outline"
+                              className="
+                                bg-purple-50
+                                text-purple-700
+                                border-purple-200
+                              "
+                            >
+                              <Users
+                                className="
+                                  w-3
+                                  h-3
+                                  mr-1
+                                "
+                              />
+
+                              {society.totalUsers || 0}
+                              {' '}
+                              Users
+                            </Badge>
+
+
+                            <ArrowRight
+                              className="
+                                w-4
+                                h-4
+                                text-slate-400
+                              "
+                            />
+
+                          </div>
+
+                        </div>
+
+                      </button>
+
+                    )
+                  )}
 
                 </div>
 
               )}
 
-          </CardContent>
+            </CardContent>
 
-        </Card>
+          </Card>
 
-      )}
-
-
-      {/* No Current Maintenance */}
-
-      {!currentMaintenance && (
-
-        <Card>
-
-          <CardContent className="py-10 text-center">
-
-            <p className="text-gray-500">
-
-              No maintenance record available for the current month.
-
-            </p>
-
-          </CardContent>
-
-        </Card>
-
-      )}
+        </div>
 
 
-      {/* Maintenance History */}
+        {/* ==================================================
+            SELECTED SOCIETY DETAILS
+        ================================================== */}
 
-      <Card>
+        {selectedSociety && (
 
-        <CardHeader>
+          <div
+            id="selected-society-section"
+            className="scroll-mt-24"
+          >
 
-          <CardTitle>
-            Payment History
-          </CardTitle>
+            <Card
+              className="
+                border-0
+                shadow-sm
+              "
+            >
 
-        </CardHeader>
+              <CardHeader>
 
+                <div
+                  className="
+                    flex
+                    flex-col
+                    md:flex-row
+                    md:items-center
+                    md:justify-between
+                    gap-4
+                  "
+                >
 
-        <CardContent>
+                  <div>
 
-          {maintenanceHistory.length === 0 ? (
-
-            <p className="text-gray-500 text-center py-8">
-              No payment history yet
-            </p>
-
-          ) : (
-
-            <>
-
-              {/* Mobile */}
-
-              <div className="space-y-3 md:hidden">
-
-                {maintenanceHistory.map(
-                  (maintenance) => (
-
-                    <div
-                      key={maintenance._id}
-                      className="rounded-xl border border-gray-200 p-4 bg-white"
+                    <CardTitle
+                      className="
+                        flex
+                        items-center
+                        gap-2
+                      "
                     >
 
-                      <div className="flex items-start justify-between gap-3 mb-4">
+                      <Building2
+                        className="
+                          w-5
+                          h-5
+                          text-blue-600
+                        "
+                      />
 
-                        <div>
+                      {selectedSociety.name}
 
-                          <p className="font-semibold text-gray-900">
+                    </CardTitle>
 
-                            {getMonthName(
-                              maintenance.month
-                            )}{' '}
+                    <p
+                      className="
+                        text-sm
+                        text-slate-500
+                        mt-1
+                      "
+                    >
+                      Society Code:{' '}
+                      {
+                        selectedSociety.society_code
+                      }
+                    </p>
 
-                            {maintenance.year}
-
-                          </p>
-
-
-                          <p className="text-xs text-gray-500 mt-1">
-
-                            Flat {maintenance.flat_no}
-
-                          </p>
-
-                        </div>
+                  </div>
 
 
-                        <StatusBadge
-                          variant={
-                            paymentStatusVariant[
-                              maintenance.status
-                            ]
-                          }
-                          dot
+                  <Badge
+                    variant="outline"
+                    className={
+                      selectedSociety.is_active
+                        ? 'bg-green-50 text-green-700 border-green-200'
+                        : 'bg-red-50 text-red-700 border-red-200'
+                    }
+                  >
+                    {selectedSociety.is_active
+                      ? 'Active Society'
+                      : 'Inactive Society'}
+                  </Badge>
+
+                </div>
+
+              </CardHeader>
+
+
+              <CardContent>
+
+                {statsLoading ? (
+
+                  <div
+                    className="
+                      flex
+                      items-center
+                      justify-center
+                      py-10
+                    "
+                  >
+
+                    <RefreshCw
+                      className="
+                        w-7
+                        h-7
+                        animate-spin
+                        text-blue-600
+                      "
+                    />
+
+                  </div>
+
+                ) : (
+
+                  <div className="space-y-6">
+
+                    {/* Stats */}
+
+                    <div
+                      className="
+                        grid
+                        grid-cols-2
+                        md:grid-cols-4
+                        gap-4
+                      "
+                    >
+
+                      <div
+                        className="
+                          p-4
+                          rounded-xl
+                          bg-slate-50
+                        "
+                      >
+
+                        <Users
+                          className="
+                            w-5
+                            h-5
+                            text-blue-600
+                          "
+                        />
+
+                        <p
+                          className="
+                            text-xs
+                            text-slate-500
+                            mt-2
+                          "
                         >
+                          Total Users
+                        </p>
 
-                          {maintenance.status === 'paid'
-                            ? 'Paid'
-                            : maintenance.status === 'overdue'
-                            ? 'Overdue'
-                            : 'Pending'}
-
-                        </StatusBadge>
+                        <p
+                          className="
+                            text-2xl
+                            font-bold
+                            text-slate-900
+                          "
+                        >
+                          {
+                            selectedSocietyStats
+                              ?.totalUsers ?? 0
+                          }
+                        </p>
 
                       </div>
 
 
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                      <div
+                        className="
+                          p-4
+                          rounded-xl
+                          bg-slate-50
+                        "
+                      >
 
-                        <div>
+                        <UserCog
+                          className="
+                            w-5
+                            h-5
+                            text-green-600
+                          "
+                        />
 
-                          <p className="text-xs text-gray-500">
-                            Amount
-                          </p>
+                        <p
+                          className="
+                            text-xs
+                            text-slate-500
+                            mt-2
+                          "
+                        >
+                          Residents
+                        </p>
 
-                          <p className="font-medium text-gray-900 mt-1">
-
-                            {formatAmount(
-                              maintenance.total_amount
-                            )}
-
-                          </p>
-
-                        </div>
-
-
-                        <div>
-
-                          <p className="text-xs text-gray-500">
-                            Due Date
-                          </p>
-
-                          <p className="font-medium text-gray-900 mt-1">
-
-                            {formatDate(
-                              maintenance.due_date
-                            )}
-
-                          </p>
-
-                        </div>
-
-
-                        <div>
-
-                          <p className="text-xs text-gray-500">
-                            Paid Date
-                          </p>
-
-                          <p className="font-medium text-gray-900 mt-1">
-
-                            {maintenance.paid_date
-                              ? formatDate(
-                                  maintenance.paid_date
-                                )
-                              : '-'}
-
-                          </p>
-
-                        </div>
-
-
-                        <div>
-
-                          <p className="text-xs text-gray-500">
-                            Late Fee
-                          </p>
-
-                          <p
-                            className={`font-medium mt-1 ${
-                              maintenance.late_fee > 0
-                                ? 'text-red-600'
-                                : 'text-gray-900'
-                            }`}
-                          >
-
-                            {formatAmount(
-                              maintenance.late_fee
-                            )}
-
-                          </p>
-
-                        </div>
+                        <p
+                          className="
+                            text-2xl
+                            font-bold
+                            text-slate-900
+                          "
+                        >
+                          {
+                            selectedSocietyStats
+                              ?.residents ?? 0
+                          }
+                        </p>
 
                       </div>
 
 
-                      {maintenance.status !== 'paid' ? (
+                      <div
+                        className="
+                          p-4
+                          rounded-xl
+                          bg-slate-50
+                        "
+                      >
 
-                        <Button
-                          size="sm"
-                          className="w-full mt-4"
-                          onClick={() =>
-                            handlePayNow(
-                              maintenance
-                            )
-                          }
-                          disabled={paying}
+                        <Shield
+                          className="
+                            w-5
+                            h-5
+                            text-purple-600
+                          "
+                        />
+
+                        <p
+                          className="
+                            text-xs
+                            text-slate-500
+                            mt-2
+                          "
                         >
+                          Admins
+                        </p>
 
-                          {paying
-                            ? 'Processing...'
-                            : 'Pay Now'}
-
-                        </Button>
-
-                      ) : (
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full mt-4 text-blue-600 border-blue-200"
-                          onClick={() =>
-                            downloadMaintenanceReceipt(
-                              maintenance
-                            )
-                          }
+                        <p
+                          className="
+                            text-2xl
+                            font-bold
+                            text-slate-900
+                          "
                         >
+                          {
+                            selectedSocietyStats
+                              ?.admins ?? 0
+                          }
+                        </p>
 
-                          <Download className="w-4 h-4 mr-2" />
+                      </div>
 
-                          Download Receipt
 
-                        </Button>
+                      <div
+                        className="
+                          p-4
+                          rounded-xl
+                          bg-slate-50
+                        "
+                      >
 
-                      )}
+                        <Crown
+                          className="
+                            w-5
+                            h-5
+                            text-amber-600
+                          "
+                        />
+
+                        <p
+                          className="
+                            text-xs
+                            text-slate-500
+                            mt-2
+                          "
+                        >
+                          Managers
+                        </p>
+
+                        <p
+                          className="
+                            text-2xl
+                            font-bold
+                            text-slate-900
+                          "
+                        >
+                          {
+                            selectedSocietyStats
+                              ?.managers ?? 0
+                          }
+                        </p>
+
+                      </div>
 
                     </div>
 
-                  )
+
+                    {/* Society Details */}
+
+                    <div
+                      className="
+                        grid
+                        grid-cols-1
+                        md:grid-cols-2
+                        gap-4
+                        pt-4
+                        border-t
+                        border-slate-100
+                      "
+                    >
+
+                      <div>
+
+                        <p
+                          className="
+                            text-xs
+                            text-slate-400
+                          "
+                        >
+                          Address
+                        </p>
+
+                        <p
+                          className="
+                            text-sm
+                            text-slate-700
+                            mt-1
+                          "
+                        >
+                          {selectedSociety.address ||
+                            'Not provided'}
+                        </p>
+
+                      </div>
+
+
+                      <div>
+
+                        <p
+                          className="
+                            text-xs
+                            text-slate-400
+                          "
+                        >
+                          Contact Number
+                        </p>
+
+                        <p
+                          className="
+                            text-sm
+                            text-slate-700
+                            mt-1
+                          "
+                        >
+                          {selectedSociety.contact_number ||
+                            'Not provided'}
+                        </p>
+
+                      </div>
+
+                    </div>
+
+                  </div>
+
                 )}
 
-              </div>
+              </CardContent>
 
+            </Card>
 
-              {/* Desktop */}
+          </div>
 
-              <div className="hidden md:block w-full overflow-hidden">
+        )}
 
-                <Table>
 
-                  <TableHeader>
+        {/* ==================================================
+            SUPER ADMIN ACTIONS
+        ================================================== */}
 
-                    <TableRow>
-
-                      <TableHead>
-                        Month
-                      </TableHead>
-
-                      <TableHead>
-                        Amount
-                      </TableHead>
-
-                      <TableHead>
-                        Due Date
-                      </TableHead>
-
-                      <TableHead>
-                        Status
-                      </TableHead>
-
-                      <TableHead className="text-right">
-                        Action
-                      </TableHead>
-
-                    </TableRow>
-
-                  </TableHeader>
-
-
-                  <TableBody>
-
-                    {maintenanceHistory.map(
-                      (maintenance) => (
-
-                        <TableRow
-                          key={maintenance._id}
-                        >
-
-                          <TableCell className="font-medium">
-
-                            {getMonthName(
-                              maintenance.month
-                            )}{' '}
-
-                            {maintenance.year}
-
-                          </TableCell>
-
-
-                          <TableCell>
-
-                            {formatAmount(
-                              maintenance.total_amount
-                            )}
-
-
-                            {maintenance.late_fee > 0 && (
-
-                              <span className="text-xs text-red-600 block">
-
-                                +
-                                {formatAmount(
-                                  maintenance.late_fee
-                                )}{' '}
-
-                                late fee
-
-                              </span>
-
-                            )}
-
-                          </TableCell>
-
-
-                          <TableCell>
-
-                            {formatDate(
-                              maintenance.due_date
-                            )}
-
-                          </TableCell>
-
-
-                          <TableCell>
-
-                            <StatusBadge
-                              variant={
-                                paymentStatusVariant[
-                                  maintenance.status
-                                ]
-                              }
-                              dot
-                            >
-
-                              {maintenance.status === 'paid'
-                                ? 'Paid'
-                                : maintenance.status === 'overdue'
-                                ? 'Overdue'
-                                : 'Pending'}
-
-                            </StatusBadge>
-
-                          </TableCell>
-
-
-                          <TableCell className="text-right">
-
-                            {maintenance.status !== 'paid' ? (
-
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  handlePayNow(
-                                    maintenance
-                                  )
-                                }
-                                disabled={paying}
-                              >
-
-                                {paying
-                                  ? 'Processing...'
-                                  : 'Pay'}
-
-                              </Button>
-
-                            ) : (
-
-                              <div className="flex items-center justify-end gap-2">
-
-                                <span className="text-sm text-gray-500">
-
-                                  {maintenance.paid_date
-                                    ? formatDate(
-                                        maintenance.paid_date
-                                      )
-                                    : ''}
-
-                                </span>
-
-
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() =>
-                                    downloadMaintenanceReceipt(
-                                      maintenance
-                                    )
-                                  }
-                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                >
-
-                                  <Download className="w-4 h-4" />
-
-                                </Button>
-
-                              </div>
-
-                            )}
-
-                          </TableCell>
-
-                        </TableRow>
-
-                      )
-                    )}
-
-                  </TableBody>
-
-                </Table>
-
-              </div>
-
-            </>
-
-          )}
-
-        </CardContent>
-
-      </Card>
-
-
-      {/* Transaction History */}
-
-      {paymentHistory.length > 0 && (
-
-        <Card>
+        <Card
+          className="
+            border-0
+            shadow-sm
+            bg-gradient-to-r
+            from-slate-900
+            to-slate-800
+            text-white
+          "
+        >
 
           <CardHeader>
 
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle
+              className="
+                flex
+                items-center
+                gap-2
+                text-white
+              "
+            >
 
-              <FileText className="w-5 h-5 flex-shrink-0" />
+              <Zap
+                className="
+                  w-5
+                  h-5
+                  text-blue-400
+                "
+              />
 
-              Transaction History
+              Super Admin Actions
 
             </CardTitle>
 
@@ -1835,228 +2004,995 @@ export default function MaintenancePage() {
 
           <CardContent>
 
-            {/* Mobile */}
+            <div
+              className="
+                grid
+                grid-cols-1
+                sm:grid-cols-2
+                lg:grid-cols-4
+                gap-3
+              "
+            >
 
-            <div className="space-y-3 md:hidden">
+              {/* Societies */}
 
-              {paymentHistory.map(
-                (payment) => (
+              <Button
+                type="button"
+                onClick={
+                  handleOpenSocieties
+                }
+                variant="secondary"
+                className="
+                  w-full
+                  h-auto
+                  py-4
+                  flex
+                  flex-col
+                  gap-2
+                  bg-slate-700/50
+                  hover:bg-slate-700
+                  border-0
+                  text-white
+                "
+              >
 
-                  <div
-                    key={payment._id}
-                    className="rounded-xl border border-gray-200 p-4 bg-white"
-                  >
+                <Building2
+                  className="
+                    w-5
+                    h-5
+                  "
+                />
 
-                    <div className="space-y-4">
+                <span
+                  className="
+                    text-xs
+                    font-medium
+                  "
+                >
+                  Societies
+                </span>
 
-                      <div>
-
-                        <p className="text-xs text-gray-500">
-                          Date
-                        </p>
-
-                        <p className="font-medium text-gray-900 mt-1">
-
-                          {formatDate(
-                            payment.payment_date
-                          )}
-
-                        </p>
-
-                      </div>
-
-
-                      <div>
-
-                        <p className="text-xs text-gray-500">
-                          Transaction ID
-                        </p>
-
-                        <p className="font-mono text-xs text-gray-700 mt-1 break-all leading-5">
-
-                          {payment.transaction_id}
-
-                        </p>
-
-                      </div>
-
-
-                      <div className="grid grid-cols-2 gap-4">
-
-                        <div>
-
-                          <p className="text-xs text-gray-500">
-                            Month
-                          </p>
-
-                          <p className="font-medium text-gray-900 mt-1">
-
-                            {getMonthName(
-                              payment.month
-                            )}{' '}
-
-                            {payment.year}
-
-                          </p>
-
-                        </div>
+              </Button>
 
 
-                        <div>
+              {/* Users */}
 
-                          <p className="text-xs text-gray-500">
-                            Amount
-                          </p>
+              <Button
+                type="button"
+                onClick={handleOpenUsers}
+                variant="secondary"
+                className="
+                  w-full
+                  h-auto
+                  py-4
+                  flex
+                  flex-col
+                  gap-2
+                  bg-slate-700/50
+                  hover:bg-slate-700
+                  border-0
+                  text-white
+                "
+              >
 
-                          <p className="font-semibold text-green-600 mt-1">
+                <Users
+                  className="
+                    w-5
+                    h-5
+                  "
+                />
 
-                            {formatAmount(
-                              payment.amount
-                            )}
+                <span
+                  className="
+                    text-xs
+                    font-medium
+                  "
+                >
+                  Users
+                </span>
 
-                          </p>
-
-                        </div>
-
-                      </div>
+              </Button>
 
 
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-blue-600 border-blue-200"
-                        onClick={() =>
-                          handleDownloadReceipt(
-                            payment
-                          )
-                        }
-                      >
+              {/* Payments */}
 
-                        <Download className="w-4 h-4 mr-2" />
+              <Button
+                type="button"
+                onClick={handleOpenPayments}
+                variant="secondary"
+                className="
+                  w-full
+                  h-auto
+                  py-4
+                  flex
+                  flex-col
+                  gap-2
+                  bg-slate-700/50
+                  hover:bg-slate-700
+                  border-0
+                  text-white
+                "
+              >
 
-                        Download PDF Receipt
+                <BarChart3
+                  className="
+                    w-5
+                    h-5
+                  "
+                />
 
-                      </Button>
+                <span
+                  className="
+                    text-xs
+                    font-medium
+                  "
+                >
+                  Payments
+                </span>
 
-                    </div>
+              </Button>
 
-                  </div>
 
-                )
+              {/* Complaints */}
+
+              <Button
+                type="button"
+                onClick={handleOpenComplaints}
+                variant="secondary"
+                className="
+                  w-full
+                  h-auto
+                  py-4
+                  flex
+                  flex-col
+                  gap-2
+                  bg-slate-700/50
+                  hover:bg-slate-700
+                  border-0
+                  text-white
+                "
+              >
+
+                <FileText
+                  className="
+                    w-5
+                    h-5
+                  "
+                />
+
+                <span
+                  className="
+                    text-xs
+                    font-medium
+                  "
+                >
+                  Complaints
+                </span>
+
+              </Button>
+
+            </div>
+
+          </CardContent>
+
+        </Card>
+
+      </div>
+    );
+  }
+
+
+  // ==========================================================
+  // NORMAL USER GREETING
+  // ==========================================================
+
+  const hour =
+    new Date().getHours();
+
+  const greeting =
+    hour < 12
+      ? 'Good Morning'
+      : hour < 17
+      ? 'Good Afternoon'
+      : 'Good Evening';
+
+
+  // ==========================================================
+  // NORMAL USER DASHBOARD
+  // ==========================================================
+
+  return (
+    <div className="space-y-8">
+
+
+      {/* ====================================================
+          EMERGENCY BANNER
+      ==================================================== */}
+
+      <EmergencyBanner
+        emergency={
+          activeEmergency
+        }
+        loading={
+          emergencyLoading
+        }
+        onResolve={
+          handleResolveEmergency
+        }
+        canResolve={
+          isAdmin || false
+        }
+        resolveLoading={
+          resolveLoading
+        }
+      />
+
+
+      {/* ====================================================
+          WELCOME HEADER
+      ==================================================== */}
+
+      <div
+        className="
+          flex
+          flex-col
+          md:flex-row
+          md:items-center
+          md:justify-between
+          gap-4
+        "
+      >
+
+        <div>
+
+          <h1
+            className="
+              text-2xl
+              sm:text-3xl
+              font-bold
+              text-slate-900
+              tracking-tight
+            "
+          >
+
+            {greeting},{' '}
+
+            {user?.name
+              ?.split(' ')[0]}
+
+          </h1>
+
+
+          <p
+            className="
+              text-slate-500
+              mt-1
+              flex
+              items-center
+              gap-2
+            "
+          >
+
+            <MapPin
+              className="
+                w-4
+                h-4
+              "
+            />
+
+            Flat {user?.flat_no}
+
+            {' • '}
+
+            {societyName}
+
+          </p>
+
+        </div>
+
+
+        <div
+          className="
+            flex
+            items-center
+            gap-3
+          "
+        >
+
+          <Badge
+            variant="outline"
+            className="
+              px-3
+              py-1.5
+              text-sm
+              font-medium
+              bg-white
+            "
+          >
+
+            <Calendar
+              className="
+                w-4
+                h-4
+                mr-1.5
+                text-slate-400
+              "
+            />
+
+            {new Date()
+              .toLocaleDateString(
+                'en-IN',
+                {
+                  weekday:
+                    'long',
+                  month:
+                    'short',
+                  day:
+                    'numeric',
+                }
               )}
+
+          </Badge>
+
+
+          {isAdmin && (
+
+            <Badge
+              className="
+                bg-blue-100
+                text-blue-700
+                hover:bg-blue-100
+                px-3
+                py-1.5
+              "
+            >
+
+              <Shield
+                className="
+                  w-4
+                  h-4
+                  mr-1.5
+                "
+              />
+
+              {user?.role ===
+              'manager'
+                ? 'Manager'
+                : 'Admin'}
+
+            </Badge>
+
+          )}
+
+        </div>
+
+      </div>
+
+
+      {/* ====================================================
+          QUICK STATS
+      ==================================================== */}
+
+      <div
+        className="
+          grid
+          grid-cols-1
+          md:grid-cols-2
+          lg:grid-cols-3
+          gap-6
+        "
+      >
+
+        <PaymentCard
+          amount={
+            dashboardData
+              .maintenance
+              .amount
+          }
+          dueDate={
+            dashboardData
+              .maintenance
+              .dueDate
+          }
+          status={
+            dashboardData
+              .maintenance
+              .status
+          }
+          lateFeesApplied={
+            dashboardData
+              .maintenance
+              .lateFeesApplied
+          }
+          loading={
+            dataLoading
+          }
+        />
+
+
+        <ComplaintsWidget
+          openCount={
+            dashboardData
+              .complaints
+              .openCount
+          }
+          inProgressCount={
+            dashboardData
+              .complaints
+              .inProgressCount
+          }
+          loading={
+            dataLoading
+          }
+        />
+
+
+        <AssetStatusWidget
+          isAdmin={
+            isAdmin || false
+          }
+        />
+
+      </div>
+
+
+      {/* ====================================================
+          EMERGENCY + PROFILE
+      ==================================================== */}
+
+      <div
+        className="
+          grid
+          grid-cols-1
+          lg:grid-cols-5
+          gap-6
+        "
+      >
+
+        {/* Emergency */}
+
+        <Card
+          className="
+            lg:col-span-3
+            overflow-hidden
+            border-0
+            shadow-sm
+            bg-gradient-to-br
+            from-white
+            to-slate-50
+          "
+        >
+
+          <CardHeader
+            className="pb-3"
+          >
+
+            <CardTitle
+              className="
+                flex
+                items-center
+                gap-2
+                text-lg
+              "
+            >
+
+              <div
+                className="
+                  w-8
+                  h-8
+                  rounded-lg
+                  bg-red-100
+                  flex
+                  items-center
+                  justify-center
+                "
+              >
+
+                <AlertTriangle
+                  className="
+                    w-4
+                    h-4
+                    text-red-600
+                  "
+                />
+
+              </div>
+
+              Lift Emergency
+
+            </CardTitle>
+
+
+            <p
+              className="
+                text-sm
+                text-slate-500
+              "
+            >
+              Use only in case of actual emergency when someone is stuck in the lift
+            </p>
+
+          </CardHeader>
+
+
+          <CardContent>
+
+            <EmergencyButton
+              onTrigger={
+                handleTriggerEmergency
+              }
+              hasActiveEmergency={
+                !!activeEmergency
+              }
+              userFlat={
+                user?.flat_no || ''
+              }
+              triggerLoading={
+                triggerLoading
+              }
+            />
+
+          </CardContent>
+
+        </Card>
+
+
+        {/* Profile */}
+
+        <Card
+          className="
+            lg:col-span-2
+            border-0
+            shadow-sm
+          "
+        >
+
+          <CardHeader
+            className="pb-3"
+          >
+
+            <CardTitle
+              className="
+                flex
+                items-center
+                gap-2
+                text-lg
+              "
+            >
+
+              <div
+                className="
+                  w-8
+                  h-8
+                  rounded-lg
+                  bg-blue-100
+                  flex
+                  items-center
+                  justify-center
+                "
+              >
+
+                <Activity
+                  className="
+                    w-4
+                    h-4
+                    text-blue-600
+                  "
+                />
+
+              </div>
+
+              Your Profile
+
+            </CardTitle>
+
+          </CardHeader>
+
+
+          <CardContent
+            className="space-y-4"
+          >
+
+            <div
+              className="
+                flex
+                items-center
+                gap-4
+              "
+            >
+
+              <div
+                className="
+                  w-14
+                  h-14
+                  rounded-full
+                  bg-gradient-to-br
+                  from-blue-400
+                  to-blue-600
+                  flex
+                  items-center
+                  justify-center
+                  flex-shrink-0
+                "
+              >
+
+                <span
+                  className="
+                    text-white
+                    font-bold
+                    text-lg
+                  "
+                >
+                  {user?.name
+                    ?.split(' ')
+                    .map(
+                      (n) =>
+                        n[0]
+                    )
+                    .join('')
+                    .slice(
+                      0,
+                      2
+                    )
+                    .toUpperCase()}
+                </span>
+
+              </div>
+
+
+              <div
+                className="
+                  min-w-0
+                "
+              >
+
+                <h3
+                  className="
+                    font-semibold
+                    text-slate-900
+                    truncate
+                  "
+                >
+                  {user?.name}
+                </h3>
+
+                <p
+                  className="
+                    text-sm
+                    text-slate-500
+                    capitalize
+                  "
+                >
+                  {user?.role}
+                </p>
+
+              </div>
 
             </div>
 
 
-            {/* Desktop */}
+            <div
+              className="
+                space-y-2
+                pt-2
+                border-t
+                border-slate-100
+              "
+            >
 
-            <div className="hidden md:block w-full overflow-hidden">
+              <div
+                className="
+                  flex
+                  items-center
+                  gap-3
+                  text-sm
+                "
+              >
 
-              <Table>
+                <Mail
+                  className="
+                    w-4
+                    h-4
+                    text-slate-400
+                  "
+                />
 
-                <TableHeader>
+                <span
+                  className="
+                    text-slate-600
+                    truncate
+                  "
+                >
+                  {user?.email}
+                </span>
 
-                  <TableRow>
-
-                    <TableHead>
-                      Date
-                    </TableHead>
-
-                    <TableHead>
-                      Transaction ID
-                    </TableHead>
-
-                    <TableHead>
-                      Month
-                    </TableHead>
-
-                    <TableHead className="text-right">
-                      Amount
-                    </TableHead>
-
-                    <TableHead className="text-right">
-                      Receipt
-                    </TableHead>
-
-                  </TableRow>
-
-                </TableHeader>
-
-
-                <TableBody>
-
-                  {paymentHistory.map(
-                    (payment) => (
-
-                      <TableRow
-                        key={payment._id}
-                      >
-
-                        <TableCell>
-
-                          {formatDate(
-                            payment.payment_date
-                          )}
-
-                        </TableCell>
+              </div>
 
 
-                        <TableCell className="font-mono text-sm break-all">
+              <div
+                className="
+                  flex
+                  items-center
+                  gap-3
+                  text-sm
+                "
+              >
 
-                          {payment.transaction_id}
+                <Phone
+                  className="
+                    w-4
+                    h-4
+                    text-slate-400
+                  "
+                />
 
-                        </TableCell>
+                <span
+                  className="
+                    text-slate-600
+                  "
+                >
+                  {user?.phone ||
+                    'Not provided'}
+                </span>
 
-
-                        <TableCell>
-
-                          {getMonthName(
-                            payment.month
-                          )}{' '}
-
-                          {payment.year}
-
-                        </TableCell>
-
-
-                        <TableCell className="text-right text-green-600 font-medium">
-
-                          {formatAmount(
-                            payment.amount
-                          )}
-
-                        </TableCell>
+              </div>
 
 
-                        <TableCell className="text-right">
+              <div
+                className="
+                  flex
+                  items-center
+                  gap-3
+                  text-sm
+                "
+              >
 
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleDownloadReceipt(
-                                payment
-                              )
-                            }
-                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                          >
+                <MapPin
+                  className="
+                    w-4
+                    h-4
+                    text-slate-400
+                  "
+                />
 
-                            <Download className="w-4 h-4 mr-1" />
+                <span
+                  className="
+                    text-slate-600
+                  "
+                >
+                  Flat {user?.flat_no}
+                </span>
 
-                            PDF
+              </div>
 
-                          </Button>
+            </div>
 
-                        </TableCell>
+          </CardContent>
 
-                      </TableRow>
+        </Card>
 
-                    )
-                  )}
+      </div>
 
-                </TableBody>
 
-              </Table>
+      {/* ====================================================
+          ADMIN QUICK ACTIONS
+      ==================================================== */}
+
+      {isAdmin && (
+
+        <Card
+          className="
+            border-0
+            shadow-sm
+            bg-gradient-to-r
+            from-slate-900
+            to-slate-800
+            text-white
+          "
+        >
+
+          <CardHeader
+            className="pb-4"
+          >
+
+            <CardTitle
+              className="
+                flex
+                items-center
+                gap-2
+                text-lg
+                text-white
+              "
+            >
+
+              <Zap
+                className="
+                  w-5
+                  h-5
+                  text-blue-400
+                "
+              />
+
+              Admin Quick Actions
+
+            </CardTitle>
+
+          </CardHeader>
+
+
+          <CardContent>
+
+            <div
+              className="
+                grid
+                grid-cols-2
+                md:grid-cols-4
+                gap-3
+              "
+            >
+
+              <Link
+                href="/admin/users"
+              >
+
+                <Button
+                  variant="secondary"
+                  className="
+                    w-full
+                    h-auto
+                    py-4
+                    flex
+                    flex-col
+                    gap-2
+                    bg-slate-700/50
+                    hover:bg-slate-700
+                    border-0
+                    text-white
+                  "
+                >
+
+                  <Users
+                    className="
+                      w-5
+                      h-5
+                    "
+                  />
+
+                  <span
+                    className="
+                      text-xs
+                      font-medium
+                    "
+                  >
+                    Manage Users
+                  </span>
+
+                </Button>
+
+              </Link>
+
+
+              <Link
+                href="/admin/payments"
+              >
+
+                <Button
+                  variant="secondary"
+                  className="
+                    w-full
+                    h-auto
+                    py-4
+                    flex
+                    flex-col
+                    gap-2
+                    bg-slate-700/50
+                    hover:bg-slate-700
+                    border-0
+                    text-white
+                  "
+                >
+
+                  <BarChart3
+                    className="
+                      w-5
+                      h-5
+                    "
+                  />
+
+                  <span
+                    className="
+                      text-xs
+                      font-medium
+                    "
+                  >
+                    All Payments
+                  </span>
+
+                </Button>
+
+              </Link>
+
+
+              <Link
+                href="/admin/complaints"
+              >
+
+                <Button
+                  variant="secondary"
+                  className="
+                    w-full
+                    h-auto
+                    py-4
+                    flex
+                    flex-col
+                    gap-2
+                    bg-slate-700/50
+                    hover:bg-slate-700
+                    border-0
+                    text-white
+                  "
+                >
+
+                  <FileText
+                    className="
+                      w-5
+                      h-5
+                    "
+                  />
+
+                  <span
+                    className="
+                      text-xs
+                      font-medium
+                    "
+                  >
+                    All Complaints
+                  </span>
+
+                </Button>
+
+              </Link>
+
+
+              <Link
+                href="/admin/assets"
+              >
+
+                <Button
+                  variant="secondary"
+                  className="
+                    w-full
+                    h-auto
+                    py-4
+                    flex
+                    flex-col
+                    gap-2
+                    bg-slate-700/50
+                    hover:bg-slate-700
+                    border-0
+                    text-white
+                  "
+                >
+
+                  <Settings
+                    className="
+                      w-5
+                      h-5
+                    "
+                  />
+
+                  <span
+                    className="
+                      text-xs
+                      font-medium
+                    "
+                  >
+                    Manage Assets
+                  </span>
+
+                </Button>
+
+              </Link>
 
             </div>
 
@@ -2066,167 +3002,6 @@ export default function MaintenancePage() {
 
       )}
 
-
-      {/* Payment Success Dialog */}
-
-      <Dialog
-        open={showSuccess}
-        onOpenChange={
-          setShowSuccess
-        }
-      >
-
-        <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md rounded-xl">
-
-          <DialogHeader>
-
-            <DialogTitle className="text-center text-xl sm:text-2xl">
-
-              🎉 Payment Successful!
-
-            </DialogTitle>
-
-
-            <DialogDescription className="text-center">
-
-              Your maintenance payment has been received
-
-            </DialogDescription>
-
-          </DialogHeader>
-
-
-          <div className="space-y-4 py-4">
-
-            <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-
-              <svg
-                className="w-8 h-8 text-green-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-
-              </svg>
-
-            </div>
-
-
-            {lastPayment && (
-
-              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-
-                <div className="flex justify-between gap-4">
-
-                  <span className="text-gray-500">
-                    Amount
-                  </span>
-
-                  <span className="font-semibold text-green-600">
-
-                    {formatAmount(
-                      lastPayment.amount
-                    )}
-
-                  </span>
-
-                </div>
-
-
-                <div className="flex justify-between gap-4">
-
-                  <span className="text-gray-500">
-                    Month
-                  </span>
-
-                  <span className="font-medium text-right">
-
-                    {getMonthName(
-                      lastPayment.month
-                    )}{' '}
-
-                    {lastPayment.year}
-
-                  </span>
-
-                </div>
-
-
-                <div className="flex flex-col gap-1">
-
-                  <span className="text-gray-500">
-                    Transaction ID
-                  </span>
-
-                  <span className="font-mono text-xs break-all">
-
-                    {lastPayment.transaction_id}
-
-                  </span>
-
-                </div>
-
-              </div>
-
-            )}
-
-
-            <p className="text-center text-sm text-gray-500">
-
-              A confirmation email has been sent to{' '}
-
-              {user?.email}
-
-            </p>
-
-
-            <div className="flex flex-col sm:flex-row gap-3">
-
-              <Button
-                variant="outline"
-                className="w-full sm:flex-1"
-                onClick={
-                  handleDownloadCurrentReceipt
-                }
-              >
-
-                <Download className="w-4 h-4 mr-2" />
-
-                Download Receipt
-
-              </Button>
-
-
-              <Button
-                className="w-full sm:flex-1"
-                onClick={() =>
-                  setShowSuccess(
-                    false
-                  )
-                }
-              >
-
-                Done
-
-              </Button>
-
-            </div>
-
-          </div>
-
-        </DialogContent>
-
-      </Dialog>
-
     </div>
-
   );
-
 }

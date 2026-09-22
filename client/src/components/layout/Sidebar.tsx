@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation';
 
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
-import { SOCIETY_NAME } from '@/lib/constants';
 
 import {
   LayoutDashboard,
@@ -35,6 +34,22 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   roles?: string[];
+}
+
+
+// ============================================================
+// USER SOCIETY TYPE
+// ============================================================
+
+interface UserWithSociety {
+  society_name?: string;
+
+  society?: {
+    name?: string;
+    society_code?: string;
+  };
+
+  society_id?: string | null;
 }
 
 
@@ -212,7 +227,24 @@ export default function Sidebar() {
 
   const isAdmin =
     user &&
-    ['manager', 'admin'].includes(user.role);
+    ['manager', 'admin'].includes(
+      user.role
+    );
+
+
+  // ==========================================================
+  // DYNAMIC SOCIETY NAME
+  // ==========================================================
+
+  const societyUser =
+    user as UserWithSociety | null;
+
+  const societyName =
+    isSuperAdmin
+      ? 'All Societies'
+      : societyUser?.society_name ||
+        societyUser?.society?.name ||
+        'Society Management';
 
 
   // ==========================================================
@@ -240,6 +272,7 @@ export default function Sidebar() {
 
   return (
     <>
+
       {/* ======================================================
           DESKTOP SIDEBAR
       ====================================================== */}
@@ -667,11 +700,10 @@ export default function Sidebar() {
                   text-slate-300
                   text-xs
                   font-medium
+                  truncate
                 "
               >
-                {isSuperAdmin
-                  ? 'All Societies'
-                  : SOCIETY_NAME}
+                {societyName}
               </p>
 
             </div>

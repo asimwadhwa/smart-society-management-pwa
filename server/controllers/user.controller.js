@@ -43,11 +43,6 @@ exports.getAllUsers = async (
     } = req.query;
 
 
-    // ----------------------------------------------------------
-    // IMPORTANT
-    // SUPER ADMIN MUST NEVER APPEAR IN MANAGE USERS
-    // ----------------------------------------------------------
-
     const query = {
       role: {
         $ne: 'super_admin'
@@ -55,21 +50,13 @@ exports.getAllUsers = async (
     };
 
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // SOCIETY SCOPE
-    // ----------------------------------------------------------
+    // ==========================================================
 
     if (
       req.user.role === 'super_admin'
     ) {
-
-      /*
-       * Super Admin can see users
-       * from all societies.
-       *
-       * If society_id is supplied,
-       * show only that society.
-       */
 
       if (society_id) {
 
@@ -94,11 +81,6 @@ exports.getAllUsers = async (
 
     } else {
 
-      /*
-       * Manager/Admin:
-       * Only their own society.
-       */
-
       if (
         !req.user.society_id
       ) {
@@ -117,9 +99,9 @@ exports.getAllUsers = async (
     }
 
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // ROLE FILTER
-    // ----------------------------------------------------------
+    // ==========================================================
 
     if (role) {
 
@@ -143,20 +125,14 @@ exports.getAllUsers = async (
 
       }
 
-
-      /*
-       * This replaces the $ne condition,
-       * but all allowed roles already exclude
-       * super_admin.
-       */
       query.role = role;
 
     }
 
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // ACTIVE FILTER
-    // ----------------------------------------------------------
+    // ==========================================================
 
     if (
       is_active !== undefined
@@ -179,9 +155,9 @@ exports.getAllUsers = async (
     }
 
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // PAGINATION
-    // ----------------------------------------------------------
+    // ==========================================================
 
     const pageNumber =
       Math.max(
@@ -205,9 +181,9 @@ exports.getAllUsers = async (
       limitNumber;
 
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // FETCH USERS
-    // ----------------------------------------------------------
+    // ==========================================================
 
     const users =
       await User.find(query)
@@ -225,17 +201,9 @@ exports.getAllUsers = async (
         .limit(limitNumber);
 
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // COUNT
-    // ----------------------------------------------------------
-
-    /*
-     * Because query contains:
-     *
-     * role: { $ne: 'super_admin' }
-     *
-     * Super Admin is NOT counted here.
-     */
+    // ==========================================================
 
     const total =
       await User.countDocuments(
@@ -260,9 +228,7 @@ exports.getAllUsers = async (
             limitNumber
           ),
 
-        total:
-
-          total,
+        total,
 
         limit:
           limitNumber
@@ -284,7 +250,20 @@ exports.getAllUsers = async (
 // GET AVAILABLE FLATS
 // ============================================================
 //
-// Manager/Admin only
+// PUBLIC REGISTRATION:
+//
+// GET /api/users/flats/available?society_code=ABC123
+//
+// Manager/Admin:
+//
+// Uses logged-in user's society automatically.
+//
+// IMPORTANT:
+// A flat is considered BOOKED if any user already has
+// that flat in the selected society.
+//
+// This is society-wise.
+// Society A booking does NOT affect Society B.
 // ============================================================
 
 exports.getAvailableFlats =
@@ -296,20 +275,82 @@ exports.getAvailableFlats =
 
     try {
 
-      const societyId =
-        req.user.society_id;
+      let societyId = null;
 
 
-      if (!societyId) {
+      // ========================================================
+      // LOGGED-IN USER
+      // ========================================================
 
-        return res.status(400).json({
-          success: false,
-          message:
-            'User is not assigned to any society'
-        });
+      if (
+        req.user &&
+        req.user.society_id
+      ) {
+
+        societyId =
+          req.user.society_id;
+
+      } else {
+
+        // ======================================================
+        // PUBLIC REGISTRATION
+        // ======================================================
+
+        const Society =
+          require('../models/Society');
+
+
+        const society_code =
+          typeof req.query.society_code === 'string'
+            ? req.query.society_code
+                .trim()
+                .toUpperCase()
+            : '';
+
+
+        if (!society_code) {
+
+          return res.status(400).json({
+            success: false,
+            message:
+              'Please provide society code'
+          });
+
+        }
+
+
+        const society =
+          await Society.findOne({
+
+            society_code,
+
+            is_active: true
+
+          }).select(
+            '_id name society_code'
+          );
+
+
+        if (!society) {
+
+          return res.status(404).json({
+            success: false,
+            message:
+              'Invalid society code or society is inactive'
+          });
+
+        }
+
+
+        societyId =
+          society._id;
 
       }
 
+
+      // ========================================================
+      // GENERATE ALL FLATS
+      // ========================================================
 
       const allFlats = [];
 
@@ -335,6 +376,19 @@ exports.getAvailableFlats =
       }
 
 
+      // ========================================================
+      // FIND BOOKED FLATS
+      // ========================================================
+      //
+      // We intentionally do NOT check is_active here.
+      //
+      // If a flat was already registered once,
+      // it remains booked even if that account becomes inactive.
+      //
+      // This prevents another person from registering
+      // the same flat.
+      // ========================================================
+
       const registeredUsers =
         await User.find({
 
@@ -343,10 +397,9 @@ exports.getAvailableFlats =
 
           flat_no: {
             $exists: true,
-            $ne: null
-          },
-
-          is_active: true
+            $ne: null,
+            $ne: ''
+          }
 
         }).select(
           'flat_no'
@@ -354,11 +407,18 @@ exports.getAvailableFlats =
 
 
       const registeredFlats =
-        registeredUsers.map(
-          user =>
-            user.flat_no
-        );
+        registeredUsers
+          .map(
+            user =>
+              String(
+                user.flat_no
+              ).trim()
+          );
 
+
+      // ========================================================
+      // AVAILABLE FLATS
+      // ========================================================
 
       const availableFlats =
         allFlats.filter(
@@ -571,9 +631,9 @@ exports.updateUserRole =
       }
 
 
-      // --------------------------------------------------------
+      // ========================================================
       // CANNOT CHANGE OWN ROLE
-      // --------------------------------------------------------
+      // ========================================================
 
       if (
         userId ===
@@ -594,9 +654,9 @@ exports.updateUserRole =
       };
 
 
-      // --------------------------------------------------------
+      // ========================================================
       // SOCIETY SECURITY
-      // --------------------------------------------------------
+      // ========================================================
 
       if (
         req.user.role !==
@@ -639,9 +699,9 @@ exports.updateUserRole =
       }
 
 
-      // --------------------------------------------------------
+      // ========================================================
       // PROTECTED ROLES
-      // --------------------------------------------------------
+      // ========================================================
 
       if (
         user.role ===
@@ -671,9 +731,9 @@ exports.updateUserRole =
       }
 
 
-      // --------------------------------------------------------
+      // ========================================================
       // UPDATE
-      // --------------------------------------------------------
+      // ========================================================
 
       user.role =
         role;
@@ -900,9 +960,9 @@ exports.deleteUser =
       };
 
 
-      // --------------------------------------------------------
+      // ========================================================
       // SOCIETY SECURITY
-      // --------------------------------------------------------
+      // ========================================================
 
       if (
         req.user.role !==
@@ -1165,12 +1225,6 @@ exports.getUsersBySociety =
           society_id:
             societyId,
 
-          /*
-           * Super Admin has society_id = null,
-           * so it would not normally appear here.
-           * Still explicitly exclude it.
-           */
-
           role: {
             $ne: 'super_admin'
           }
@@ -1259,11 +1313,6 @@ exports.getSocietyUserStats =
 
               society_id:
                 objectId,
-
-              /*
-               * Super Admin must never
-               * be included in society stats.
-               */
 
               role: {
                 $ne:

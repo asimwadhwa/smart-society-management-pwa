@@ -37,7 +37,8 @@ import {
 } from '@/components/ui/select';
 
 import {
-  Building2
+  Building2,
+  Loader2
 } from 'lucide-react';
 
 import {
@@ -46,14 +47,17 @@ import {
 
 import api from '@/lib/api';
 
+
 export default function RegisterPage() {
 
   const router = useRouter();
+
 
   const {
     isAuthenticated,
     loading: authLoading
   } = useAuth();
+
 
   // ==========================================================
   // FORM DATA
@@ -61,14 +65,27 @@ export default function RegisterPage() {
 
   const [formData, setFormData] =
     useState({
+
       society_code: '',
+
       name: '',
+
       email: '',
+
       password: '',
+
       confirmPassword: '',
+
       flat_no: '',
+
       phone: ''
+
     });
+
+
+  // ==========================================================
+  // STATES
+  // ==========================================================
 
   const [error, setError] =
     useState('');
@@ -78,6 +95,24 @@ export default function RegisterPage() {
 
   const [loading, setLoading] =
     useState(false);
+
+
+  // ==========================================================
+  // FLAT STATES
+  // ==========================================================
+
+  const [availableFlats, setAvailableFlats] =
+    useState<string[]>([]);
+
+  const [flatsLoading, setFlatsLoading] =
+    useState(false);
+
+  const [flatError, setFlatError] =
+    useState('');
+
+  const [societyChecked, setSocietyChecked] =
+    useState(false);
+
 
   // ==========================================================
   // REDIRECT IF ALREADY AUTHENTICATED
@@ -89,7 +124,9 @@ export default function RegisterPage() {
       !authLoading &&
       isAuthenticated
     ) {
+
       router.push('/');
+
     }
 
   }, [
@@ -97,6 +134,166 @@ export default function RegisterPage() {
     authLoading,
     router
   ]);
+
+
+  // ==========================================================
+  // GET AVAILABLE FLATS
+  // ==========================================================
+
+  useEffect(() => {
+
+    const societyCode =
+      formData.society_code
+        .trim()
+        .toUpperCase();
+
+
+    // --------------------------------------------------------
+    // Clear flats if society code is incomplete
+    // --------------------------------------------------------
+
+    if (
+      societyCode.length < 3
+    ) {
+
+      setAvailableFlats([]);
+
+      setSocietyChecked(false);
+
+      setFlatError('');
+
+      setFormData(prev => ({
+        ...prev,
+        flat_no: ''
+      }));
+
+      return;
+
+    }
+
+
+    let cancelled = false;
+
+
+    const fetchAvailableFlats =
+      async () => {
+
+        setFlatsLoading(true);
+
+        setSocietyChecked(false);
+
+        setFlatError('');
+
+        setAvailableFlats([]);
+
+        setFormData(prev => ({
+          ...prev,
+          flat_no: ''
+        }));
+
+
+        try {
+
+          const response =
+            await api.get(
+              '/users/flats/available',
+              {
+                params: {
+                  society_code:
+                    societyCode
+                }
+              }
+            );
+
+
+          if (cancelled) {
+            return;
+          }
+
+
+          if (
+            response.data?.success
+          ) {
+
+            setAvailableFlats(
+              response.data.data || []
+            );
+
+            setSocietyChecked(true);
+
+            if (
+              (
+                response.data.data || []
+              ).length === 0
+            ) {
+
+              setFlatError(
+                'No flats are available in this society.'
+              );
+
+            }
+
+          } else {
+
+            setAvailableFlats([]);
+
+            setSocietyChecked(false);
+
+            setFlatError(
+              response.data?.message ||
+              'Unable to load available flats.'
+            );
+
+          }
+
+        } catch (err: any) {
+
+          if (cancelled) {
+            return;
+          }
+
+
+          setAvailableFlats([]);
+
+          setSocietyChecked(false);
+
+          setFormData(prev => ({
+            ...prev,
+            flat_no: ''
+          }));
+
+
+          setFlatError(
+            err.response?.data?.message ||
+            'Invalid society code or unable to load flats.'
+          );
+
+        } finally {
+
+          if (!cancelled) {
+
+            setFlatsLoading(false);
+
+          }
+
+        }
+
+      };
+
+
+    fetchAvailableFlats();
+
+
+    return () => {
+
+      cancelled = true;
+
+    };
+
+  }, [
+    formData.society_code
+  ]);
+
 
   // ==========================================================
   // HANDLE CHANGE
@@ -113,8 +310,11 @@ export default function RegisterPage() {
     }));
 
     setError('');
+
     setSuccess('');
+
   };
+
 
   // ==========================================================
   // SUBMIT
@@ -127,32 +327,41 @@ export default function RegisterPage() {
     e.preventDefault();
 
     setError('');
+
     setSuccess('');
+
 
     const society_code =
       formData.society_code
         .trim()
         .toUpperCase();
 
+
     const name =
       formData.name.trim();
+
 
     const email =
       formData.email
         .trim()
         .toLowerCase();
 
+
     const password =
       formData.password;
+
 
     const confirmPassword =
       formData.confirmPassword;
 
+
     const flat_no =
       formData.flat_no;
 
+
     const phone =
       formData.phone.trim();
+
 
     // ========================================================
     // 1. REQUIRED
@@ -167,11 +376,15 @@ export default function RegisterPage() {
       !flat_no ||
       !phone
     ) {
+
       setError(
         'Please fill in all required fields.'
       );
+
       return;
+
     }
+
 
     // ========================================================
     // 2. SOCIETY CODE
@@ -181,74 +394,135 @@ export default function RegisterPage() {
       society_code.length < 3 ||
       society_code.length > 20
     ) {
+
       setError(
         'Society code must be between 3 and 20 characters.'
       );
+
       return;
+
     }
+
 
     if (
       !/^[A-Z0-9_-]+$/.test(
         society_code
       )
     ) {
+
       setError(
         'Society code can contain only letters, numbers, hyphen and underscore.'
       );
+
       return;
+
     }
 
+
     // ========================================================
-    // 3. NAME
+    // 3. SOCIETY MUST BE VERIFIED
+    // ========================================================
+
+    if (
+      !societyChecked
+    ) {
+
+      setError(
+        'Please enter a valid active society code and wait for the flat list to load.'
+      );
+
+      return;
+
+    }
+
+
+    // ========================================================
+    // 4. FLAT MUST BE AVAILABLE
+    // ========================================================
+
+    if (
+      !availableFlats.includes(
+        flat_no
+      )
+    ) {
+
+      setError(
+        'Please select an available flat.'
+      );
+
+      return;
+
+    }
+
+
+    // ========================================================
+    // 5. NAME
     // ========================================================
 
     if (
       name.length < 2
     ) {
+
       setError(
         'Full name must be at least 2 characters.'
       );
+
       return;
+
     }
+
 
     if (
       name.length > 50
     ) {
+
       setError(
         'Full name must not exceed 50 characters.'
       );
+
       return;
+
     }
+
 
     if (
       !/^[A-Za-zÀ-ÖØ-öø-ÿ.' -]+$/.test(
         name
       )
     ) {
+
       setError(
         'Full name can contain only letters, spaces, dot, apostrophe and hyphen.'
       );
+
       return;
+
     }
 
+
     // ========================================================
-    // 4. EMAIL
+    // 6. EMAIL
     // ========================================================
 
     const emailRegex =
       /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+
     if (
       !emailRegex.test(email)
     ) {
+
       setError(
         'Please enter a valid email address.'
       );
+
       return;
+
     }
 
+
     // ========================================================
-    // 5. PHONE
+    // 7. PHONE
     // ========================================================
 
     if (
@@ -256,94 +530,130 @@ export default function RegisterPage() {
         phone
       )
     ) {
+
       setError(
         'Please enter a valid 10-digit Indian mobile number.'
       );
+
       return;
+
     }
 
+
     // ========================================================
-    // 6. PASSWORD
+    // 8. PASSWORD
     // ========================================================
 
     if (
       password.length < 8
     ) {
+
       setError(
         'Password must be at least 8 characters long.'
       );
+
       return;
+
     }
+
 
     if (
       password.length > 64
     ) {
+
       setError(
         'Password must not exceed 64 characters.'
       );
+
       return;
+
     }
+
 
     if (
       /\s/.test(password)
     ) {
+
       setError(
         'Password must not contain spaces.'
       );
+
       return;
+
     }
+
 
     if (
       !/[A-Z]/.test(password)
     ) {
+
       setError(
         'Password must contain at least one uppercase letter.'
       );
+
       return;
+
     }
+
 
     if (
       !/[a-z]/.test(password)
     ) {
+
       setError(
         'Password must contain at least one lowercase letter.'
       );
+
       return;
+
     }
+
 
     if (
       !/[0-9]/.test(password)
     ) {
+
       setError(
         'Password must contain at least one number.'
       );
+
       return;
+
     }
 
+
     if (
-      !/[!@#$%^&*(),.?":{}|<>_\-\\[\]/+=;'`~]/.test(
+      !/[!@#$%^&*(),.?":{}|<>\-_[\]/+=;'`~]/.test(
         password
       )
     ) {
+
       setError(
         'Password must contain at least one special character.'
       );
+
       return;
+
     }
 
+
     // ========================================================
-    // 7. CONFIRM PASSWORD
+    // 9. CONFIRM PASSWORD
     // ========================================================
 
     if (
       password !==
       confirmPassword
     ) {
+
       setError(
         'Passwords do not match.'
       );
+
       return;
+
     }
+
 
     // ========================================================
     // SUBMIT
@@ -351,20 +661,29 @@ export default function RegisterPage() {
 
     setLoading(true);
 
+
     try {
 
       const response =
         await api.post(
           '/auth/register',
           {
+
             society_code,
+
             name,
+
             email,
+
             password,
+
             flat_no,
+
             phone
+
           }
         );
+
 
       if (
         response.data.success
@@ -374,19 +693,39 @@ export default function RegisterPage() {
           'Registration successful! Redirecting to login...'
         );
 
+
         setFormData({
+
           society_code: '',
+
           name: '',
+
           email: '',
+
           password: '',
+
           confirmPassword: '',
+
           flat_no: '',
+
           phone: ''
+
         });
 
+
+        setAvailableFlats([]);
+
+        setSocietyChecked(false);
+
+        setFlatError('');
+
+
         setTimeout(() => {
+
           router.push('/login');
+
         }, 2000);
+
 
       } else {
 
@@ -394,6 +733,7 @@ export default function RegisterPage() {
           response.data.message ||
           'Registration failed.'
         );
+
       }
 
     } catch (
@@ -408,8 +748,11 @@ export default function RegisterPage() {
     } finally {
 
       setLoading(false);
+
     }
+
   };
+
 
   // ==========================================================
   // LOADING
@@ -434,8 +777,11 @@ export default function RegisterPage() {
         </CardContent>
 
       </Card>
+
     );
+
   }
+
 
   // ==========================================================
   // UI
@@ -448,14 +794,20 @@ export default function RegisterPage() {
       <CardHeader className="space-y-1">
 
         <CardTitle className="text-2xl font-bold text-center">
+
           Create Account
+
         </CardTitle>
 
+
         <CardDescription className="text-center">
+
           Register as a resident of your society
+
         </CardDescription>
 
       </CardHeader>
+
 
       <form
         onSubmit={handleSubmit}
@@ -463,6 +815,7 @@ export default function RegisterPage() {
       >
 
         <CardContent className="space-y-4">
+
 
           {/* ==================================================
               ERROR
@@ -473,11 +826,15 @@ export default function RegisterPage() {
             <Alert variant="destructive">
 
               <AlertDescription>
+
                 {error}
+
               </AlertDescription>
 
             </Alert>
+
           )}
+
 
           {/* ==================================================
               SUCCESS
@@ -488,11 +845,15 @@ export default function RegisterPage() {
             <Alert className="border-green-500 bg-green-50 text-green-700">
 
               <AlertDescription>
+
                 {success}
+
               </AlertDescription>
 
             </Alert>
+
           )}
+
 
           {/* ==================================================
               SOCIETY CODE
@@ -501,12 +862,16 @@ export default function RegisterPage() {
           <div className="space-y-2">
 
             <Label htmlFor="society-code">
+
               Society Code
+
             </Label>
+
 
             <div className="relative">
 
               <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+
 
               <Input
                 id="society-code"
@@ -532,11 +897,15 @@ export default function RegisterPage() {
 
             </div>
 
+
             <p className="text-xs text-gray-500">
+
               Enter the society code provided by your society manager.
+
             </p>
 
           </div>
+
 
           {/* ==================================================
               NAME
@@ -545,8 +914,11 @@ export default function RegisterPage() {
           <div className="space-y-2">
 
             <Label htmlFor="register-name">
+
               Full Name
+
             </Label>
+
 
             <Input
               id="register-name"
@@ -568,6 +940,7 @@ export default function RegisterPage() {
 
           </div>
 
+
           {/* ==================================================
               EMAIL
           ================================================== */}
@@ -575,8 +948,11 @@ export default function RegisterPage() {
           <div className="space-y-2">
 
             <Label htmlFor="register-email">
+
               Email
+
             </Label>
+
 
             <Input
               id="register-email"
@@ -597,19 +973,26 @@ export default function RegisterPage() {
 
           </div>
 
+
           {/* ==================================================
               FLAT + PHONE
           ================================================== */}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-            {/* FLAT */}
+
+            {/* ==================================================
+                FLAT NUMBER
+            ================================================== */}
 
             <div className="space-y-2">
 
               <Label htmlFor="flat_no">
+
                 Flat Number
+
               </Label>
+
 
               <Select
                 value={
@@ -621,45 +1004,132 @@ export default function RegisterPage() {
                     value
                   )
                 }
-                disabled={loading}
+                disabled={
+                  loading ||
+                  flatsLoading ||
+                  !societyChecked
+                }
               >
+
 
                 <SelectTrigger id="flat_no">
 
                   <SelectValue
-                    placeholder="Select flat"
+                    placeholder={
+                      flatsLoading
+                        ? 'Loading flats...'
+                        : societyChecked
+                          ? 'Select available flat'
+                          : 'Enter valid society code first'
+                    }
                   />
 
                 </SelectTrigger>
 
+
                 <SelectContent>
 
                   {FLAT_NUMBERS.map(
-                    (flat) => (
+                    (flat) => {
 
-                      <SelectItem
-                        key={flat}
-                        value={flat}
-                      >
-                        {flat}
-                      </SelectItem>
+                      const isAvailable =
+                        availableFlats.includes(
+                          flat
+                        );
 
-                    )
+
+                      return (
+
+                        <SelectItem
+                          key={flat}
+                          value={flat}
+                          disabled={
+                            !isAvailable
+                          }
+                          className={
+                            isAvailable
+                              ? 'font-bold text-gray-900'
+                              : 'text-gray-300 opacity-50'
+                          }
+                        >
+
+                          {flat}
+
+                          {!isAvailable && (
+                            <span className="ml-2 text-xs text-gray-300">
+                              (Booked)
+                            </span>
+                          )}
+
+                        </SelectItem>
+
+                      );
+
+                    }
                   )}
 
                 </SelectContent>
 
               </Select>
 
+
+              {/* ==================================================
+                  FLAT STATUS
+              ================================================== */}
+
+              {flatsLoading && (
+
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+
+                  <Loader2 className="w-3 h-3 animate-spin" />
+
+                  Checking flat availability...
+
+                </div>
+
+              )}
+
+
+              {!flatsLoading &&
+                societyChecked &&
+                !flatError && (
+
+                  <p className="text-xs text-green-600">
+
+                    Available flats are shown in bold.
+                    Booked flats are disabled.
+
+                  </p>
+
+                )}
+
+
+              {!flatsLoading &&
+                flatError && (
+
+                  <p className="text-xs text-red-500">
+
+                    {flatError}
+
+                  </p>
+
+                )}
+
             </div>
 
-            {/* PHONE */}
+
+            {/* ==================================================
+                PHONE
+            ================================================== */}
 
             <div className="space-y-2">
 
               <Label htmlFor="register-phone">
+
                 Phone Number
+
               </Label>
+
 
               <Input
                 id="register-phone"
@@ -685,6 +1155,7 @@ export default function RegisterPage() {
 
           </div>
 
+
           {/* ==================================================
               PASSWORD
           ================================================== */}
@@ -692,8 +1163,11 @@ export default function RegisterPage() {
           <div className="space-y-2">
 
             <Label htmlFor="register-password">
+
               Password
+
             </Label>
+
 
             <Input
               id="register-password"
@@ -714,12 +1188,16 @@ export default function RegisterPage() {
               maxLength={64}
             />
 
+
             <p className="text-xs text-gray-500">
+
               Min 8 characters with uppercase,
               lowercase, number and special character.
+
             </p>
 
           </div>
+
 
           {/* ==================================================
               CONFIRM PASSWORD
@@ -728,8 +1206,11 @@ export default function RegisterPage() {
           <div className="space-y-2">
 
             <Label htmlFor="register-confirm-password">
+
               Confirm Password
+
             </Label>
+
 
             <Input
               id="register-confirm-password"
@@ -754,12 +1235,17 @@ export default function RegisterPage() {
 
         </CardContent>
 
+
         <CardFooter className="flex flex-col space-y-4">
+
 
           <Button
             type="submit"
             className="w-full"
-            disabled={loading}
+            disabled={
+              loading ||
+              flatsLoading
+            }
           >
 
             {loading
@@ -768,15 +1254,19 @@ export default function RegisterPage() {
 
           </Button>
 
+
           <p className="text-sm text-center text-gray-600">
 
             Already have an account?{' '}
+
 
             <Link
               href="/login"
               className="text-primary font-medium hover:underline"
             >
+
               Sign in here
+
             </Link>
 
           </p>
@@ -786,5 +1276,7 @@ export default function RegisterPage() {
       </form>
 
     </Card>
+
   );
+
 }

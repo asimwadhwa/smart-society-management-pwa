@@ -21,7 +21,6 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 
-import { SOCIETY_NAME } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
 import {
@@ -62,6 +61,20 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   roles?: string[];
+}
+
+
+// ============================================================
+// USER SOCIETY TYPE
+// ============================================================
+
+interface UserWithSociety {
+  society_id?: string | null;
+  society_name?: string;
+  society?: {
+    name?: string;
+    society_code?: string;
+  };
 }
 
 
@@ -175,6 +188,7 @@ const superAdminItems: NavItem[] = [
 // ============================================================
 
 export default function Navbar() {
+
   const pathname = usePathname();
   const router = useRouter();
 
@@ -204,12 +218,28 @@ export default function Navbar() {
 
 
   // ==========================================================
+  // DYNAMIC SOCIETY NAME
+  // ==========================================================
+
+  const societyUser =
+    user as UserWithSociety | null;
+
+  const societyName =
+    isSuperAdmin
+      ? 'Society Management'
+      : societyUser?.society_name ||
+        societyUser?.society?.name ||
+        'Society Management';
+
+
+  // ==========================================================
   // GET USER INITIALS
   // ==========================================================
 
   const getInitials = (
     name: string
   ) => {
+
     return name
       .split(' ')
       .map(
@@ -218,6 +248,7 @@ export default function Navbar() {
       .join('')
       .toUpperCase()
       .slice(0, 2);
+
   };
 
 
@@ -289,7 +320,9 @@ export default function Navbar() {
           color:
             'bg-slate-100 text-slate-700 border-slate-200',
         };
+
     }
+
   };
 
 
@@ -311,6 +344,7 @@ export default function Navbar() {
     await logout();
 
     router.push('/login');
+
   };
 
 
@@ -341,6 +375,7 @@ export default function Navbar() {
   // ==========================================================
 
   return (
+
     <header
       className="
         bg-white/80
@@ -363,7 +398,6 @@ export default function Navbar() {
             h-16
           "
         >
-
 
           {/* ==================================================
               LOGO
@@ -420,9 +454,7 @@ export default function Navbar() {
                   tracking-tight
                 "
               >
-                {isSuperAdmin
-                  ? 'Society Management'
-                  : SOCIETY_NAME}
+                {societyName}
               </span>
 
               <span
@@ -455,11 +487,6 @@ export default function Navbar() {
             "
           >
 
-
-            {/* ==================================================
-                ROLE BADGE
-            ================================================== */}
-
             {user && (
 
               <Badge
@@ -485,10 +512,6 @@ export default function Navbar() {
             )}
 
 
-            {/* ==================================================
-                NOTIFICATION
-            ================================================== */}
-
             <Button
               variant="ghost"
               size="icon"
@@ -507,10 +530,6 @@ export default function Navbar() {
 
             </Button>
 
-
-            {/* ==================================================
-                USER DROPDOWN
-            ================================================== */}
 
             {user && (
 
@@ -775,7 +794,6 @@ export default function Navbar() {
                 "
               >
 
-
                 {/* ==========================================
                     MOBILE HEADER
                 ========================================== */}
@@ -828,9 +846,7 @@ export default function Navbar() {
                         font-bold
                       "
                     >
-                      {isSuperAdmin
-                        ? 'Society Management'
-                        : SOCIETY_NAME}
+                      {societyName}
                     </span>
 
                   </SheetTitle>
@@ -891,9 +907,7 @@ export default function Navbar() {
                       </Avatar>
 
 
-                      <div
-                        className="flex-1"
-                      >
+                      <div className="flex-1">
 
                         <p
                           className="
@@ -1293,4 +1307,4 @@ export default function Navbar() {
 
     </header>
   );
-} 
+}
