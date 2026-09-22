@@ -16,6 +16,7 @@ const MaintenanceSchema = new mongoose.Schema({
     index: true
   },
 
+
   // ============================================================
   // USER
   // ============================================================
@@ -26,8 +27,10 @@ const MaintenanceSchema = new mongoose.Schema({
     required: [
       true,
       'User is required'
-    ]
+    ],
+    index: true
   },
+
 
   // ============================================================
   // FLAT
@@ -41,6 +44,7 @@ const MaintenanceSchema = new mongoose.Schema({
     ],
     trim: true
   },
+
 
   // ============================================================
   // MONTH
@@ -62,6 +66,7 @@ const MaintenanceSchema = new mongoose.Schema({
     ]
   },
 
+
   // ============================================================
   // YEAR
   // ============================================================
@@ -71,43 +76,61 @@ const MaintenanceSchema = new mongoose.Schema({
     required: [
       true,
       'Year is required'
+    ],
+    min: [
+      2000,
+      'Invalid year'
     ]
   },
 
+
   // ============================================================
   // MAINTENANCE AMOUNT
-  // ============================================================
   //
-  // IMPORTANT:
-  // No default ₹1000.
+  // Default = ₹1000
   //
-  // Amount will come from Society maintenance settings.
+  // Society settings se generate hone par actual
+  // configured amount yahan save hoga.
+  //
+  // Manager/Admin settings se amount edit kar sakte hain.
   // ============================================================
 
   amount: {
     type: Number,
-    required: [
-      true,
-      'Maintenance amount is required'
-    ],
+    required: true,
+    default: 1000,
     min: [
       0.01,
       'Maintenance amount must be greater than 0'
     ]
   },
 
+
   // ============================================================
   // LATE FEE
+  //
+  // Default = ₹100
+  //
+  // IMPORTANT:
+  //
+  // New maintenance create hone par controller/generator
+  // normally late_fee = 0 rakhega.
+  //
+  // Due date cross hone ke baad lateFeeApplier society ki
+  // configured late fee apply karega.
+  //
+  // Agar direct model creation ho to default ₹100 available hai.
   // ============================================================
 
   late_fee: {
     type: Number,
-    default: 0,
+    default: 100,
     min: [
       0,
       'Late fee cannot be negative'
     ]
   },
+
 
   // ============================================================
   // TOTAL AMOUNT
@@ -117,12 +140,19 @@ const MaintenanceSchema = new mongoose.Schema({
     type: Number,
     required: true,
     default: function () {
+
       return (
-        Number(this.amount || 0) +
-        Number(this.late_fee || 0)
+        Number(
+          this.amount || 0
+        ) +
+        Number(
+          this.late_fee || 0
+        )
       );
+
     }
   },
+
 
   // ============================================================
   // DUE DATE
@@ -136,6 +166,7 @@ const MaintenanceSchema = new mongoose.Schema({
     ]
   },
 
+
   // ============================================================
   // PAID DATE
   // ============================================================
@@ -145,36 +176,51 @@ const MaintenanceSchema = new mongoose.Schema({
     default: null
   },
 
+
   // ============================================================
   // STATUS
   // ============================================================
 
   status: {
     type: String,
+
     enum: [
       'pending',
       'paid',
       'overdue'
     ],
-    default: 'pending'
+
+    default: 'pending',
+
+    index: true
   },
 
+
   // ============================================================
-  // RAZORPAY
+  // RAZORPAY PAYMENT ID
   // ============================================================
 
   razorpay_payment_id: {
     type: String,
-    default: null
+    default: null,
+    trim: true
   },
+
+
+  // ============================================================
+  // RAZORPAY ORDER ID
+  // ============================================================
 
   razorpay_order_id: {
     type: String,
-    default: null
+    default: null,
+    trim: true
   }
 
 }, {
+
   timestamps: true
+
 });
 
 
@@ -182,46 +228,58 @@ const MaintenanceSchema = new mongoose.Schema({
 // INDEXES
 // ============================================================
 
+
 // One maintenance record per flat per month per society
 MaintenanceSchema.index(
+
   {
     society_id: 1,
     flat_no: 1,
     month: 1,
     year: 1
   },
+
   {
     unique: true
   }
+
 );
 
 
 // Status lookup
 MaintenanceSchema.index({
+
   society_id: 1,
   status: 1
+
 });
 
 
 // Due date lookup
 MaintenanceSchema.index({
+
   society_id: 1,
   due_date: 1
+
 });
 
 
 // User maintenance lookup
 MaintenanceSchema.index({
+
   society_id: 1,
   user_id: 1
+
 });
 
 
 // Month/year lookup
 MaintenanceSchema.index({
+
   society_id: 1,
   month: 1,
   year: 1
+
 });
 
 
@@ -234,8 +292,15 @@ MaintenanceSchema.virtual(
 ).get(function () {
 
   return (
-    Number(this.amount || 0) +
-    Number(this.late_fee || 0)
+
+    Number(
+      this.amount || 0
+    ) +
+
+    Number(
+      this.late_fee || 0
+    )
+
   );
 
 });
@@ -244,16 +309,34 @@ MaintenanceSchema.virtual(
 // ============================================================
 // PRE SAVE
 // ============================================================
+//
+// Every save ke time:
+//
+// total_amount = amount + late_fee
+//
+// Example:
+//
+// ₹1000 + ₹0   = ₹1000
+// ₹1000 + ₹100 = ₹1100
+//
+// ============================================================
 
 MaintenanceSchema.pre(
   'save',
   function (next) {
 
     this.total_amount =
-      Number(this.amount || 0) +
-      Number(this.late_fee || 0);
+
+      Number(
+        this.amount || 0
+      ) +
+
+      Number(
+        this.late_fee || 0
+      );
 
     next();
+
   }
 );
 

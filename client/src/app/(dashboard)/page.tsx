@@ -452,51 +452,49 @@ export default function DashboardPage() {
           // Maintenance
           // --------------------------------------------------
 
-          if (user.role !== 'manager') {
-            const maintenanceResponse =
-              await api.get(
-                '/maintenance/current'
-              );
+          const maintenanceResponse =
+            await api.get(
+              '/maintenance/current'
+            );
 
-            if (
+          if (
+            maintenanceResponse.data
+              ?.success
+          ) {
+            const maintenance =
               maintenanceResponse.data
-                ?.success
-            ) {
-              const maintenance =
-                maintenanceResponse.data
-                  .data;
+                .data;
 
-              setDashboardData(
-                (prev) => ({
-                  ...prev,
+            setDashboardData(
+              (prev) => ({
+                ...prev,
 
-                  maintenance: {
-                    amount:
-                      Number(
-                        maintenance
-                          ?.total_amount || 0
-                      ),
-
-                    dueDate:
+                maintenance: {
+                  amount:
+                    Number(
                       maintenance
-                        ?.due_date ||
-                      new Date()
-                        .toISOString(),
+                        ?.total_amount || 0
+                    ),
 
-                    status:
+                  dueDate:
+                    maintenance
+                      ?.due_date ||
+                    new Date()
+                      .toISOString(),
+
+                  status:
+                    maintenance
+                      ?.status ||
+                    'pending',
+
+                  lateFeesApplied:
+                    Number(
                       maintenance
-                        ?.status ||
-                      'pending',
-
-                    lateFeesApplied:
-                      Number(
-                        maintenance
-                          ?.late_fee || 0
-                      ),
-                  },
-                })
-              );
-            }
+                        ?.late_fee || 0
+                    ),
+                },
+              })
+            );
           }
 
 
@@ -2375,63 +2373,31 @@ export default function DashboardPage() {
         "
       >
 
-        {!isManager ? (
-          <PaymentCard
-            amount={
-              dashboardData
-                .maintenance
-                .amount
-            }
-            dueDate={
-              dashboardData
-                .maintenance
-                .dueDate
-            }
-            status={
-              dashboardData
-                .maintenance
-                .status
-            }
-            lateFeesApplied={
-              dashboardData
-                .maintenance
-                .lateFeesApplied
-            }
-            loading={
-              dataLoading
-            }
-          />
-        ) : (
-          <Card className="border-0 shadow-sm">
-            <CardContent className="p-6 h-full flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-500">
-                      Maintenance
-                    </p>
-                    <h3 className="text-xl font-bold text-slate-900 mt-2">
-                      Society Maintenance
-                    </h3>
-                  </div>
-                  <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center">
-                    <BarChart3 className="w-5 h-5 text-blue-600" />
-                  </div>
-                </div>
-                <p className="text-sm text-slate-500 mt-4">
-                  Manage maintenance payments and collection for your society.
-                </p>
-              </div>
-              <Button
-                className="w-full mt-6"
-                onClick={() => router.push('/admin/payments')}
-              >
-                Manage Maintenance
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+        <PaymentCard
+          amount={
+            dashboardData
+              .maintenance
+              .amount
+          }
+          dueDate={
+            dashboardData
+              .maintenance
+              .dueDate
+          }
+          status={
+            dashboardData
+              .maintenance
+              .status
+          }
+          lateFeesApplied={
+            dashboardData
+              .maintenance
+              .lateFeesApplied
+          }
+          loading={
+            dataLoading
+          }
+        />
 
 
         <ComplaintsWidget

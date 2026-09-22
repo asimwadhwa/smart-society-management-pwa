@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 
 import {
   Card,
@@ -54,6 +53,7 @@ import {
   generateReceiptPDF,
 } from '@/lib/generateReceipt';
 
+
 declare global {
   interface Window {
     Razorpay: new (
@@ -61,6 +61,7 @@ declare global {
     ) => RazorpayInstance;
   }
 }
+
 
 interface RazorpayOptions {
   key: string;
@@ -89,16 +90,19 @@ interface RazorpayOptions {
   };
 }
 
+
 interface RazorpayInstance {
   open: () => void;
   close: () => void;
 }
+
 
 interface RazorpayResponse {
   razorpay_order_id: string;
   razorpay_payment_id: string;
   razorpay_signature: string;
 }
+
 
 interface OrderData {
   order_id: string;
@@ -121,531 +125,890 @@ interface OrderData {
   };
 }
 
-export default function MaintenancePage() {
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const router = useRouter();
 
-  const [currentMaintenance, setCurrentMaintenance] =
+export default function MaintenancePage() {
+
+  const { user } = useAuth();
+
+  const { toast } = useToast();
+
+
+  const [
+    currentMaintenance,
+    setCurrentMaintenance
+  ] =
     useState<Maintenance | null>(null);
 
-  const [maintenanceHistory, setMaintenanceHistory] =
+
+  const [
+    maintenanceHistory,
+    setMaintenanceHistory
+  ] =
     useState<Maintenance[]>([]);
 
-  const [paymentHistory, setPaymentHistory] =
+
+  const [
+    paymentHistory,
+    setPaymentHistory
+  ] =
     useState<PaymentLog[]>([]);
 
-  const [loading, setLoading] = useState(true);
 
-  const [paying, setPaying] = useState(false);
+  const [
+    loading,
+    setLoading
+  ] =
+    useState(true);
 
-  const [showSuccess, setShowSuccess] = useState(false);
 
-  const [lastPayment, setLastPayment] = useState<{
-    transaction_id: string;
-    amount: number;
-    month: number;
-    year: number;
-  } | null>(null);
+  const [
+    paying,
+    setPaying
+  ] =
+    useState(false);
 
-  // ============================================
+
+  const [
+    showSuccess,
+    setShowSuccess
+  ] =
+    useState(false);
+
+
+  const [
+    lastPayment,
+    setLastPayment
+  ] =
+    useState<{
+
+      transaction_id: string;
+
+      amount: number;
+
+      month: number;
+
+      year: number;
+
+    } | null>(null);
+
+
+  // ============================================================
   // LOAD RAZORPAY
-  // ============================================
+  // ============================================================
 
   useEffect(() => {
+
     const scriptUrl =
       'https://checkout.razorpay.com/v1/checkout.js';
+
 
     const existingScript =
       document.querySelector(
         `script[src="${scriptUrl}"]`
       );
 
+
     if (existingScript) {
       return;
     }
 
+
     const script =
       document.createElement('script');
 
-    script.src = scriptUrl;
-    script.async = true;
 
-    document.body.appendChild(script);
+    script.src =
+      scriptUrl;
+
+    script.async =
+      true;
+
+
+    document.body.appendChild(
+      script
+    );
+
 
     return () => {
-      if (document.body.contains(script)) {
-        document.body.removeChild(script);
-      }
-    };
-  }, []);
 
-  // ============================================
-  // FETCH DATA
-  // ============================================
+      if (
+        document.body.contains(
+          script
+        )
+      ) {
 
-  const fetchData = useCallback(
-    async () => {
-      try {
-        setLoading(true);
-
-        const [
-          currentResult,
-          historyResult,
-          paymentResult,
-        ] = await Promise.allSettled([
-          api.get('/maintenance/current'),
-          api.get('/maintenance?status='),
-          api.get('/maintenance/history'),
-        ]);
-
-        // Current maintenance
-        if (
-          currentResult.status === 'fulfilled'
-        ) {
-          const response =
-            currentResult.value;
-
-          if (response.data?.success) {
-            setCurrentMaintenance(
-              response.data.data || null
-            );
-          } else {
-            setCurrentMaintenance(null);
-          }
-        } else {
-          setCurrentMaintenance(null);
-
-          console.error(
-            'Current maintenance error:',
-            currentResult.reason
-          );
-        }
-
-        // Maintenance history
-        if (
-          historyResult.status === 'fulfilled'
-        ) {
-          const response =
-            historyResult.value;
-
-          if (response.data?.success) {
-            setMaintenanceHistory(
-              response.data.data || []
-            );
-          } else {
-            setMaintenanceHistory([]);
-          }
-        } else {
-          setMaintenanceHistory([]);
-
-          console.error(
-            'Maintenance history error:',
-            historyResult.reason
-          );
-        }
-
-        // Payment history
-        if (
-          paymentResult.status === 'fulfilled'
-        ) {
-          const response =
-            paymentResult.value;
-
-          if (response.data?.success) {
-            setPaymentHistory(
-              response.data.data || []
-            );
-          } else {
-            setPaymentHistory([]);
-          }
-        } else {
-          setPaymentHistory([]);
-
-          console.error(
-            'Payment history error:',
-            paymentResult.reason
-          );
-        }
-
-        const allFailed =
-          currentResult.status === 'rejected' &&
-          historyResult.status === 'rejected' &&
-          paymentResult.status === 'rejected';
-
-        if (allFailed) {
-          toast({
-            title: 'Error',
-            description:
-              'Failed to load maintenance data. Please refresh the page.',
-            variant: 'destructive',
-          });
-        }
-      } catch (error) {
-        console.error(
-          'Error fetching maintenance data:',
-          error
+        document.body.removeChild(
+          script
         );
 
-        toast({
-          title: 'Error',
-          description:
-            'Failed to load maintenance data',
-          variant: 'destructive',
-        });
-      } finally {
-        setLoading(false);
       }
-    },
-    [toast]
-  );
 
-  // ============================================
-  // ROLE HANDLING
-  // ============================================
+    };
+
+  }, []);
+
+
+  // ============================================================
+  // FETCH DATA
+  // ============================================================
+
+  const fetchData =
+    useCallback(
+      async () => {
+
+        try {
+
+          setLoading(true);
+
+
+          const [
+            currentResult,
+            historyResult,
+            paymentResult,
+          ] =
+            await Promise.allSettled([
+
+              api.get(
+                '/maintenance/current'
+              ),
+
+              api.get(
+                '/maintenance?status='
+              ),
+
+              api.get(
+                '/maintenance/history'
+              ),
+
+            ]);
+
+
+          // ----------------------------------------------------
+          // CURRENT MAINTENANCE
+          // ----------------------------------------------------
+
+          if (
+            currentResult.status ===
+            'fulfilled'
+          ) {
+
+            const response =
+              currentResult.value;
+
+
+            if (
+              response.data?.success
+            ) {
+
+              setCurrentMaintenance(
+                response.data.data ||
+                null
+              );
+
+            } else {
+
+              setCurrentMaintenance(
+                null
+              );
+
+            }
+
+          } else {
+
+            setCurrentMaintenance(
+              null
+            );
+
+
+            console.error(
+              'Current maintenance error:',
+              currentResult.reason
+            );
+
+          }
+
+
+          // ----------------------------------------------------
+          // MAINTENANCE HISTORY
+          // ----------------------------------------------------
+
+          if (
+            historyResult.status ===
+            'fulfilled'
+          ) {
+
+            const response =
+              historyResult.value;
+
+
+            if (
+              response.data?.success
+            ) {
+
+              setMaintenanceHistory(
+                response.data.data ||
+                []
+              );
+
+            } else {
+
+              setMaintenanceHistory(
+                []
+              );
+
+            }
+
+          } else {
+
+            setMaintenanceHistory(
+              []
+            );
+
+
+            console.error(
+              'Maintenance history error:',
+              historyResult.reason
+            );
+
+          }
+
+
+          // ----------------------------------------------------
+          // PAYMENT HISTORY
+          // ----------------------------------------------------
+
+          if (
+            paymentResult.status ===
+            'fulfilled'
+          ) {
+
+            const response =
+              paymentResult.value;
+
+
+            if (
+              response.data?.success
+            ) {
+
+              setPaymentHistory(
+                response.data.data ||
+                []
+              );
+
+            } else {
+
+              setPaymentHistory(
+                []
+              );
+
+            }
+
+          } else {
+
+            setPaymentHistory(
+              []
+            );
+
+
+            console.error(
+              'Payment history error:',
+              paymentResult.reason
+            );
+
+          }
+
+
+          const allFailed =
+            currentResult.status ===
+              'rejected' &&
+
+            historyResult.status ===
+              'rejected' &&
+
+            paymentResult.status ===
+              'rejected';
+
+
+          if (allFailed) {
+
+            toast({
+
+              title:
+                'Error',
+
+              description:
+                'Failed to load maintenance data. Please refresh the page.',
+
+              variant:
+                'destructive',
+
+            });
+
+          }
+
+        } catch (error) {
+
+          console.error(
+            'Error fetching maintenance data:',
+            error
+          );
+
+
+          toast({
+
+            title:
+              'Error',
+
+            description:
+              'Failed to load maintenance data',
+
+            variant:
+              'destructive',
+
+          });
+
+        } finally {
+
+          setLoading(false);
+
+        }
+
+      },
+      [toast]
+    );
+
+
+  // ============================================================
+  // LOAD DATA
+  //
+  // Resident + Admin + Manager
+  // ============================================================
 
   useEffect(() => {
+
     if (!user) {
       return;
     }
 
-    // Manager has NO personal maintenance.
-    // Redirect to Maintenance Management page.
-    if (user.role === 'manager') {
-      router.replace('/admin/payments');
-      return;
+
+    if (
+      [
+        'resident',
+        'admin',
+        'manager'
+      ].includes(
+        user.role
+      )
+    ) {
+
+      fetchData();
+
+    } else {
+
+      setLoading(false);
+
     }
 
-    fetchData();
   }, [
     user,
-    router,
     fetchData,
   ]);
 
-  // ============================================
+
+  // ============================================================
   // PAY MAINTENANCE
-  // ============================================
+  // ============================================================
 
-  const handlePayNow = async (
-    maintenance: Maintenance
-  ) => {
-    if (!window.Razorpay) {
-      toast({
-        title: 'Error',
-        description:
-          'Payment system not loaded. Please refresh the page.',
-        variant: 'destructive',
-      });
+  const handlePayNow =
+    async (
+      maintenance: Maintenance
+    ) => {
 
-      return;
-    }
+      if (
+        !window.Razorpay
+      ) {
 
-    try {
-      setPaying(true);
+        toast({
 
-      const orderRes =
-        await api.post(
-          '/maintenance/create-order',
-          {
-            maintenance_id:
-              maintenance._id,
-          }
-        );
+          title:
+            'Error',
 
-      if (!orderRes.data?.success) {
-        throw new Error(
-          orderRes.data?.message ||
-            'Failed to create order'
-        );
+          description:
+            'Payment system not loaded. Please refresh the page.',
+
+          variant:
+            'destructive',
+
+        });
+
+        return;
+
       }
 
-      const orderData: OrderData =
-        orderRes.data.data;
 
-      const options: RazorpayOptions = {
-        key: orderData.key_id,
+      try {
 
-        amount: orderData.amount,
+        setPaying(true);
 
-        currency: orderData.currency,
 
-        name: 'Smart Society',
+        const orderRes =
+          await api.post(
 
-        description:
-          `Maintenance for ${getMonthName(
-            orderData.maintenance.month
-          )} ${orderData.maintenance.year}`,
+            '/maintenance/create-order',
 
-        order_id: orderData.order_id,
-
-        handler: async (
-          response: RazorpayResponse
-        ) => {
-          try {
-            const verifyRes =
-              await api.post(
-                '/payment/verify',
-                {
-                  razorpay_order_id:
-                    response.razorpay_order_id,
-
-                  razorpay_payment_id:
-                    response.razorpay_payment_id,
-
-                  razorpay_signature:
-                    response.razorpay_signature,
-
-                  maintenance_id:
-                    maintenance._id,
-                }
-              );
-
-            if (!verifyRes.data?.success) {
-              throw new Error(
-                verifyRes.data?.message ||
-                  'Payment verification failed'
-              );
+            {
+              maintenance_id:
+                maintenance._id,
             }
 
-            setLastPayment({
-              transaction_id:
-                response.razorpay_payment_id,
+          );
 
-              amount:
-                orderData.maintenance.total_amount,
 
-              month:
-                orderData.maintenance.month,
+        if (
+          !orderRes.data?.success
+        ) {
 
-              year:
-                orderData.maintenance.year,
-            });
+          throw new Error(
 
-            setShowSuccess(true);
+            orderRes.data?.message ||
+            'Failed to create order'
 
-            await fetchData();
+          );
 
-            toast({
-              title:
-                'Payment Successful! 🎉',
+        }
 
-              description:
-                'Your maintenance payment has been received.',
-            });
-          } catch (error) {
-            console.error(
-              'Payment verification error:',
-              error
-            );
 
-            toast({
-              title:
-                'Verification Failed',
+        const orderData:
+          OrderData =
+          orderRes.data.data;
 
-              description:
-                'Payment received but verification failed. Please contact support.',
 
-              variant: 'destructive',
-            });
-          } finally {
-            setPaying(false);
-          }
-        },
+        const options:
+          RazorpayOptions = {
 
-        prefill: {
+          key:
+            orderData.key_id,
+
+          amount:
+            orderData.amount,
+
+          currency:
+            orderData.currency,
+
           name:
-            orderData.prefill.name,
+            'Smart Society',
 
-          email:
-            orderData.prefill.email,
+          description:
+            `Maintenance for ${getMonthName(
+              orderData.maintenance.month
+            )} ${orderData.maintenance.year}`,
 
-          contact:
-            orderData.prefill.contact,
-        },
+          order_id:
+            orderData.order_id,
 
-        theme: {
-          color: '#0D9488',
-        },
 
-        modal: {
-          ondismiss: () => {
-            setPaying(false);
+          handler:
+            async (
+              response:
+                RazorpayResponse
+            ) => {
+
+              try {
+
+                const verifyRes =
+                  await api.post(
+
+                    '/payment/verify',
+
+                    {
+
+                      razorpay_order_id:
+                        response.razorpay_order_id,
+
+                      razorpay_payment_id:
+                        response.razorpay_payment_id,
+
+                      razorpay_signature:
+                        response.razorpay_signature,
+
+                      maintenance_id:
+                        maintenance._id,
+
+                    }
+
+                  );
+
+
+                if (
+                  !verifyRes.data?.success
+                ) {
+
+                  throw new Error(
+
+                    verifyRes.data?.message ||
+                    'Payment verification failed'
+
+                  );
+
+                }
+
+
+                setLastPayment({
+
+                  transaction_id:
+                    response.razorpay_payment_id,
+
+                  amount:
+                    orderData.maintenance.total_amount,
+
+                  month:
+                    orderData.maintenance.month,
+
+                  year:
+                    orderData.maintenance.year,
+
+                });
+
+
+                setShowSuccess(
+                  true
+                );
+
+
+                await fetchData();
+
+
+                toast({
+
+                  title:
+                    'Payment Successful! 🎉',
+
+                  description:
+                    'Your maintenance payment has been received.',
+
+                });
+
+              } catch (error) {
+
+                console.error(
+                  'Payment verification error:',
+                  error
+                );
+
+
+                toast({
+
+                  title:
+                    'Verification Failed',
+
+                  description:
+                    'Payment received but verification failed. Please contact support.',
+
+                  variant:
+                    'destructive',
+
+                });
+
+              } finally {
+
+                setPaying(false);
+
+              }
+
+            },
+
+
+          prefill: {
+
+            name:
+              orderData.prefill.name,
+
+            email:
+              orderData.prefill.email,
+
+            contact:
+              orderData.prefill.contact,
+
           },
-        },
-      };
 
-      const razorpay =
-        new window.Razorpay(options);
 
-      razorpay.open();
-    } catch (error) {
-      console.error(
-        'Payment error:',
-        error
+          theme: {
+
+            color:
+              '#0D9488',
+
+          },
+
+
+          modal: {
+
+            ondismiss: () => {
+
+              setPaying(
+                false
+              );
+
+            },
+
+          },
+
+        };
+
+
+        const razorpay =
+          new window.Razorpay(
+            options
+          );
+
+
+        razorpay.open();
+
+      } catch (error) {
+
+        console.error(
+          'Payment error:',
+          error
+        );
+
+
+        toast({
+
+          title:
+            'Payment Failed',
+
+          description:
+            error instanceof Error
+              ? error.message
+              : 'Failed to initiate payment',
+
+          variant:
+            'destructive',
+
+        });
+
+
+        setPaying(false);
+
+      }
+
+    };
+
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
+
+  const getMonthName =
+    (
+      month: number
+    ) => {
+
+      const months = [
+
+        'January',
+
+        'February',
+
+        'March',
+
+        'April',
+
+        'May',
+
+        'June',
+
+        'July',
+
+        'August',
+
+        'September',
+
+        'October',
+
+        'November',
+
+        'December',
+
+      ];
+
+
+      return (
+        months[
+          month - 1
+        ] ||
+        'Unknown'
       );
 
-      toast({
-        title: 'Payment Failed',
+    };
 
-        description:
-          error instanceof Error
-            ? error.message
-            : 'Failed to initiate payment',
 
-        variant: 'destructive',
+  const formatDate =
+    (
+      dateStr: string
+    ) =>
+
+      new Date(
+        dateStr
+      ).toLocaleDateString(
+        'en-IN',
+        {
+
+          day:
+            'numeric',
+
+          month:
+            'short',
+
+          year:
+            'numeric',
+
+        }
+      );
+
+
+  const formatAmount =
+    (
+      amount: number
+    ) =>
+
+      new Intl.NumberFormat(
+        'en-IN',
+        {
+
+          style:
+            'currency',
+
+          currency:
+            'INR',
+
+          minimumFractionDigits:
+            0,
+
+        }
+      ).format(
+        amount
+      );
+
+
+  // ============================================================
+  // DOWNLOAD PAYMENT RECEIPT
+  // ============================================================
+
+  const handleDownloadReceipt =
+    (
+      payment: PaymentLog
+    ) => {
+
+      generateReceiptPDF({
+
+        transactionId:
+          payment.transaction_id,
+
+        amount:
+          payment.amount,
+
+        month:
+          payment.month,
+
+        year:
+          payment.year,
+
+        flatNo:
+          user?.flat_no ||
+          '',
+
+        paymentDate:
+          payment.payment_date,
+
+        userName:
+          user?.name ||
+          '',
+
       });
 
-      setPaying(false);
-    }
-  };
 
-  // ============================================
-  // HELPERS
-  // ============================================
+      toast({
 
-  const getMonthName = (
-    month: number
-  ) => {
-    const months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
+        title:
+          'Receipt Downloaded',
 
-    return (
-      months[month - 1] ||
-      'Unknown'
-    );
-  };
+        description:
+          'Your payment receipt has been downloaded successfully.',
 
-  const formatDate = (
-    dateStr: string
-  ) =>
-    new Date(dateStr).toLocaleDateString(
-      'en-IN',
-      {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }
-    );
+      });
 
-  const formatAmount = (
-    amount: number
-  ) =>
-    new Intl.NumberFormat(
-      'en-IN',
-      {
-        style: 'currency',
-        currency: 'INR',
-        minimumFractionDigits: 0,
-      }
-    ).format(amount);
+    };
 
-  // ============================================
-  // DOWNLOAD PAYMENT RECEIPT
-  // ============================================
 
-  const handleDownloadReceipt = (
-    payment: PaymentLog
-  ) => {
-    generateReceiptPDF({
-      transactionId:
-        payment.transaction_id,
-
-      amount:
-        payment.amount,
-
-      month:
-        payment.month,
-
-      year:
-        payment.year,
-
-      flatNo:
-        user?.flat_no || '',
-
-      paymentDate:
-        payment.payment_date,
-
-      userName:
-        user?.name || '',
-    });
-
-    toast({
-      title:
-        'Receipt Downloaded',
-
-      description:
-        'Your payment receipt has been downloaded successfully.',
-    });
-  };
-
-  // ============================================
+  // ============================================================
   // DOWNLOAD MAINTENANCE RECEIPT
-  // ============================================
+  // ============================================================
 
-  const downloadMaintenanceReceipt = (
-    maintenance: Maintenance
-  ) => {
-    generateReceiptPDF({
-      transactionId:
-        maintenance.razorpay_payment_id ||
-        'N/A',
+  const downloadMaintenanceReceipt =
+    (
+      maintenance:
+        Maintenance
+    ) => {
 
-      amount:
-        maintenance.total_amount,
+      generateReceiptPDF({
 
-      month:
-        maintenance.month,
+        transactionId:
+          maintenance.razorpay_payment_id ||
+          'N/A',
 
-      year:
-        maintenance.year,
+        amount:
+          maintenance.total_amount,
 
-      flatNo:
-        maintenance.flat_no,
+        month:
+          maintenance.month,
 
-      paymentDate:
-        maintenance.paid_date ||
-        new Date().toISOString(),
+        year:
+          maintenance.year,
 
-      userName:
-        user?.name || '',
+        flatNo:
+          maintenance.flat_no,
 
-      lateFee:
-        maintenance.late_fee,
-    });
+        paymentDate:
+          maintenance.paid_date ||
+          new Date().toISOString(),
 
-    toast({
-      title:
-        'Receipt Downloaded',
+        userName:
+          user?.name ||
+          '',
 
-      description:
-        'Your payment receipt has been downloaded.',
-    });
-  };
+        lateFee:
+          maintenance.late_fee,
 
-  // ============================================
+      });
+
+
+      toast({
+
+        title:
+          'Receipt Downloaded',
+
+        description:
+          'Your payment receipt has been downloaded.',
+
+      });
+
+    };
+
+
+  // ============================================================
   // DOWNLOAD CURRENT RECEIPT
-  // ============================================
+  // ============================================================
 
   const handleDownloadCurrentReceipt =
     () => {
+
       if (!lastPayment) {
         return;
       }
 
+
       generateReceiptPDF({
+
         transactionId:
           lastPayment.transaction_id,
 
@@ -659,32 +1022,47 @@ export default function MaintenancePage() {
           lastPayment.year,
 
         flatNo:
-          user?.flat_no || '',
+          user?.flat_no ||
+          '',
 
         paymentDate:
           new Date().toISOString(),
 
         userName:
-          user?.name || '',
+          user?.name ||
+          '',
+
       });
 
+
       toast({
+
         title:
           'Receipt Downloaded',
 
         description:
           'Your payment receipt has been downloaded successfully.',
+
       });
+
     };
 
-  // ============================================
-  // LOADING
-  // ============================================
 
-  if (loading || !user) {
+  // ============================================================
+  // LOADING
+  // ============================================================
+
+  if (
+    loading ||
+    !user
+  ) {
+
     return (
+
       <div className="space-y-6">
+
         <div>
+
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             Maintenance
           </h1>
@@ -692,41 +1070,88 @@ export default function MaintenancePage() {
           <p className="text-gray-600 mt-1">
             View and pay your maintenance dues
           </p>
+
         </div>
 
+
         <Card>
+
           <CardContent className="pt-6">
+
             <div className="animate-pulse space-y-4">
+
               <div className="h-8 bg-gray-200 rounded w-32" />
 
               <div className="h-12 bg-gray-200 rounded w-24" />
 
               <div className="h-10 bg-gray-200 rounded w-full" />
+
             </div>
+
           </CardContent>
+
         </Card>
+
       </div>
+
     );
+
   }
 
-  // ============================================
-  // MANAGER
-  // ============================================
 
-  if (user.role === 'manager') {
-    return null;
+  // ============================================================
+  // UNSUPPORTED ROLES
+  //
+  // Super Admin / Watchman
+  // ============================================================
+
+  if (
+    ![
+      'resident',
+      'admin',
+      'manager'
+    ].includes(
+      user.role
+    )
+  ) {
+
+    return (
+
+      <div className="space-y-6">
+
+        <div>
+
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+            Maintenance
+          </h1>
+
+          <p className="text-gray-600 mt-1">
+            Personal maintenance is not available for this account.
+          </p>
+
+        </div>
+
+      </div>
+
+    );
+
   }
 
-  // ============================================
+
+  // ============================================================
   // MAIN UI
-  // ============================================
+  // ============================================================
 
   return (
+
     <div className="space-y-5 sm:space-y-6 w-full min-w-0">
 
       {/* Header */}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
         <div>
+
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             Maintenance
           </h1>
@@ -734,11 +1159,16 @@ export default function MaintenancePage() {
           <p className="text-gray-600 mt-1 text-sm sm:text-base">
             View and pay your maintenance dues
           </p>
+
         </div>
+
       </div>
 
+
       {/* Current Maintenance */}
+
       {currentMaintenance && (
+
         <Card
           className={
             currentMaintenance.status === 'overdue'
@@ -748,17 +1178,24 @@ export default function MaintenancePage() {
               : ''
           }
         >
+
           <CardHeader className="pb-4">
+
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
               <CardTitle className="text-lg sm:text-xl">
+
                 {getMonthName(
                   currentMaintenance.month
                 )}{' '}
+
                 {currentMaintenance.year}
+
               </CardTitle>
 
+
               <div className="self-start sm:self-auto">
+
                 <StatusBadge
                   variant={
                     paymentStatusVariant[
@@ -767,24 +1204,32 @@ export default function MaintenancePage() {
                   }
                   dot
                 >
+
                   {currentMaintenance.status === 'paid'
                     ? 'Paid'
                     : currentMaintenance.status === 'overdue'
                     ? 'Overdue'
                     : 'Pending'}
+
                 </StatusBadge>
+
               </div>
+
             </div>
+
           </CardHeader>
+
 
           <CardContent className="space-y-5">
 
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
 
               <div className="min-w-0">
+
                 <p className="text-sm text-gray-500">
                   Total Amount
                 </p>
+
 
                 <p
                   className={`text-3xl sm:text-4xl font-bold ${
@@ -795,23 +1240,35 @@ export default function MaintenancePage() {
                       : 'text-primary'
                   }`}
                 >
+
                   {formatAmount(
                     currentMaintenance.total_amount
                   )}
+
                 </p>
 
+
                 {currentMaintenance.late_fee > 0 && (
+
                   <p className="text-xs text-red-600 mt-1">
+
                     Includes{' '}
+
                     {formatAmount(
                       currentMaintenance.late_fee
                     )}{' '}
+
                     late fee
+
                   </p>
+
                 )}
+
               </div>
 
+
               <div className="sm:text-right">
+
                 <p className="text-sm text-gray-500">
                   Flat No.
                 </p>
@@ -819,14 +1276,20 @@ export default function MaintenancePage() {
                 <p className="text-2xl sm:text-3xl font-semibold text-gray-900">
                   {currentMaintenance.flat_no}
                 </p>
+
               </div>
+
             </div>
 
+
             {/* Pay Now */}
+
             {currentMaintenance.status !== 'paid' && (
+
               <div className="flex flex-col gap-4 pt-4 border-t sm:flex-row sm:items-center sm:justify-between">
 
                 <div>
+
                   <p className="text-sm text-gray-500">
                     Due Date
                   </p>
@@ -838,87 +1301,154 @@ export default function MaintenancePage() {
                         : 'text-gray-900'
                     }`}
                   >
+
                     {formatDate(
                       currentMaintenance.due_date
                     )}
+
                   </p>
+
                 </div>
+
 
                 <Button
                   onClick={() =>
-                    handlePayNow(currentMaintenance)
+                    handlePayNow(
+                      currentMaintenance
+                    )
                   }
                   disabled={paying}
                   size="lg"
                   className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
                 >
+
                   {paying ? (
+
                     <>
+
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+
                       Processing...
+
                     </>
+
                   ) : (
+
                     <>
+
                       <CreditCard className="w-4 h-4 mr-2" />
+
                       Pay Now
+
                     </>
+
                   )}
+
                 </Button>
+
               </div>
+
             )}
 
+
             {/* Paid */}
+
             {currentMaintenance.status === 'paid' &&
               currentMaintenance.paid_date && (
+
                 <div className="flex items-center gap-2 text-green-600 text-sm pt-3 border-t border-green-200">
+
                   <svg
                     className="w-5 h-5 flex-shrink-0"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
+
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
                       d="M5 13l4 4L19 7"
                     />
+
                   </svg>
 
+
                   <span>
+
                     Paid on{' '}
+
                     {formatDate(
                       currentMaintenance.paid_date
                     )}
+
                   </span>
+
                 </div>
+
               )}
 
           </CardContent>
+
         </Card>
+
       )}
 
+
+      {/* No Current Maintenance */}
+
+      {!currentMaintenance && (
+
+        <Card>
+
+          <CardContent className="py-10 text-center">
+
+            <p className="text-gray-500">
+
+              No maintenance record available for the current month.
+
+            </p>
+
+          </CardContent>
+
+        </Card>
+
+      )}
+
+
       {/* Maintenance History */}
+
       <Card>
+
         <CardHeader>
+
           <CardTitle>
             Payment History
           </CardTitle>
+
         </CardHeader>
+
 
         <CardContent>
 
           {maintenanceHistory.length === 0 ? (
+
             <p className="text-gray-500 text-center py-8">
               No payment history yet
             </p>
+
           ) : (
+
             <>
+
               {/* Mobile */}
+
               <div className="space-y-3 md:hidden">
 
                 {maintenanceHistory.map(
                   (maintenance) => (
+
                     <div
                       key={maintenance._id}
                       className="rounded-xl border border-gray-200 p-4 bg-white"
@@ -927,17 +1457,26 @@ export default function MaintenancePage() {
                       <div className="flex items-start justify-between gap-3 mb-4">
 
                         <div>
+
                           <p className="font-semibold text-gray-900">
+
                             {getMonthName(
                               maintenance.month
                             )}{' '}
+
                             {maintenance.year}
+
                           </p>
 
+
                           <p className="text-xs text-gray-500 mt-1">
+
                             Flat {maintenance.flat_no}
+
                           </p>
+
                         </div>
+
 
                         <StatusBadge
                           variant={
@@ -947,55 +1486,75 @@ export default function MaintenancePage() {
                           }
                           dot
                         >
+
                           {maintenance.status === 'paid'
                             ? 'Paid'
                             : maintenance.status === 'overdue'
                             ? 'Overdue'
                             : 'Pending'}
+
                         </StatusBadge>
+
                       </div>
+
 
                       <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
 
                         <div>
+
                           <p className="text-xs text-gray-500">
                             Amount
                           </p>
 
                           <p className="font-medium text-gray-900 mt-1">
+
                             {formatAmount(
                               maintenance.total_amount
                             )}
+
                           </p>
+
                         </div>
 
+
                         <div>
+
                           <p className="text-xs text-gray-500">
                             Due Date
                           </p>
 
                           <p className="font-medium text-gray-900 mt-1">
+
                             {formatDate(
                               maintenance.due_date
                             )}
+
                           </p>
+
                         </div>
 
+
                         <div>
+
                           <p className="text-xs text-gray-500">
                             Paid Date
                           </p>
 
                           <p className="font-medium text-gray-900 mt-1">
+
                             {maintenance.paid_date
                               ? formatDate(
                                   maintenance.paid_date
                                 )
                               : '-'}
+
                           </p>
+
                         </div>
 
+
                         <div>
+
                           <p className="text-xs text-gray-500">
                             Late Fee
                           </p>
@@ -1007,28 +1566,39 @@ export default function MaintenancePage() {
                                 : 'text-gray-900'
                             }`}
                           >
+
                             {formatAmount(
                               maintenance.late_fee
                             )}
+
                           </p>
+
                         </div>
 
                       </div>
 
+
                       {maintenance.status !== 'paid' ? (
+
                         <Button
                           size="sm"
                           className="w-full mt-4"
                           onClick={() =>
-                            handlePayNow(maintenance)
+                            handlePayNow(
+                              maintenance
+                            )
                           }
                           disabled={paying}
                         >
+
                           {paying
                             ? 'Processing...'
                             : 'Pay Now'}
+
                         </Button>
+
                       ) : (
+
                         <Button
                           variant="outline"
                           size="sm"
@@ -1039,23 +1609,31 @@ export default function MaintenancePage() {
                             )
                           }
                         >
+
                           <Download className="w-4 h-4 mr-2" />
+
                           Download Receipt
+
                         </Button>
+
                       )}
 
                     </div>
+
                   )
                 )}
 
               </div>
 
+
               {/* Desktop */}
+
               <div className="hidden md:block w-full overflow-hidden">
 
                 <Table>
 
                   <TableHeader>
+
                     <TableRow>
 
                       <TableHead>
@@ -1079,46 +1657,66 @@ export default function MaintenancePage() {
                       </TableHead>
 
                     </TableRow>
+
                   </TableHeader>
+
 
                   <TableBody>
 
                     {maintenanceHistory.map(
                       (maintenance) => (
+
                         <TableRow
                           key={maintenance._id}
                         >
 
                           <TableCell className="font-medium">
+
                             {getMonthName(
                               maintenance.month
                             )}{' '}
+
                             {maintenance.year}
+
                           </TableCell>
 
+
                           <TableCell>
+
                             {formatAmount(
                               maintenance.total_amount
                             )}
 
+
                             {maintenance.late_fee > 0 && (
+
                               <span className="text-xs text-red-600 block">
+
                                 +
                                 {formatAmount(
                                   maintenance.late_fee
                                 )}{' '}
+
                                 late fee
+
                               </span>
+
                             )}
+
                           </TableCell>
 
+
                           <TableCell>
+
                             {formatDate(
                               maintenance.due_date
                             )}
+
                           </TableCell>
 
+
                           <TableCell>
+
                             <StatusBadge
                               variant={
                                 paymentStatusVariant[
@@ -1127,17 +1725,22 @@ export default function MaintenancePage() {
                               }
                               dot
                             >
+
                               {maintenance.status === 'paid'
                                 ? 'Paid'
                                 : maintenance.status === 'overdue'
                                 ? 'Overdue'
                                 : 'Pending'}
+
                             </StatusBadge>
+
                           </TableCell>
+
 
                           <TableCell className="text-right">
 
                             {maintenance.status !== 'paid' ? (
+
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -1148,20 +1751,27 @@ export default function MaintenancePage() {
                                 }
                                 disabled={paying}
                               >
+
                                 {paying
                                   ? 'Processing...'
                                   : 'Pay'}
+
                               </Button>
+
                             ) : (
+
                               <div className="flex items-center justify-end gap-2">
 
                                 <span className="text-sm text-gray-500">
+
                                   {maintenance.paid_date
                                     ? formatDate(
                                         maintenance.paid_date
                                       )
                                     : ''}
+
                                 </span>
+
 
                                 <Button
                                   variant="ghost"
@@ -1173,15 +1783,19 @@ export default function MaintenancePage() {
                                   }
                                   className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                                 >
+
                                   <Download className="w-4 h-4" />
+
                                 </Button>
 
                               </div>
+
                             )}
 
                           </TableCell>
 
                         </TableRow>
+
                       )
                     )}
 
@@ -1190,30 +1804,44 @@ export default function MaintenancePage() {
                 </Table>
 
               </div>
+
             </>
+
           )}
 
         </CardContent>
+
       </Card>
 
+
       {/* Transaction History */}
+
       {paymentHistory.length > 0 && (
+
         <Card>
 
           <CardHeader>
+
             <CardTitle className="flex items-center gap-2">
+
               <FileText className="w-5 h-5 flex-shrink-0" />
+
               Transaction History
+
             </CardTitle>
+
           </CardHeader>
+
 
           <CardContent>
 
             {/* Mobile */}
+
             <div className="space-y-3 md:hidden">
 
               {paymentHistory.map(
                 (payment) => (
+
                   <div
                     key={payment._id}
                     className="rounded-xl border border-gray-200 p-4 bg-white"
@@ -1222,55 +1850,76 @@ export default function MaintenancePage() {
                     <div className="space-y-4">
 
                       <div>
+
                         <p className="text-xs text-gray-500">
                           Date
                         </p>
 
                         <p className="font-medium text-gray-900 mt-1">
+
                           {formatDate(
                             payment.payment_date
                           )}
+
                         </p>
+
                       </div>
 
+
                       <div>
+
                         <p className="text-xs text-gray-500">
                           Transaction ID
                         </p>
 
                         <p className="font-mono text-xs text-gray-700 mt-1 break-all leading-5">
+
                           {payment.transaction_id}
+
                         </p>
+
                       </div>
+
 
                       <div className="grid grid-cols-2 gap-4">
 
                         <div>
+
                           <p className="text-xs text-gray-500">
                             Month
                           </p>
 
                           <p className="font-medium text-gray-900 mt-1">
+
                             {getMonthName(
                               payment.month
                             )}{' '}
+
                             {payment.year}
+
                           </p>
+
                         </div>
 
+
                         <div>
+
                           <p className="text-xs text-gray-500">
                             Amount
                           </p>
 
                           <p className="font-semibold text-green-600 mt-1">
+
                             {formatAmount(
                               payment.amount
                             )}
+
                           </p>
+
                         </div>
 
                       </div>
+
 
                       <Button
                         variant="outline"
@@ -1282,24 +1931,31 @@ export default function MaintenancePage() {
                           )
                         }
                       >
+
                         <Download className="w-4 h-4 mr-2" />
+
                         Download PDF Receipt
+
                       </Button>
 
                     </div>
 
                   </div>
+
                 )
               )}
 
             </div>
 
+
             {/* Desktop */}
+
             <div className="hidden md:block w-full overflow-hidden">
 
               <Table>
 
                 <TableHeader>
+
                   <TableRow>
 
                     <TableHead>
@@ -1323,38 +1979,54 @@ export default function MaintenancePage() {
                     </TableHead>
 
                   </TableRow>
+
                 </TableHeader>
+
 
                 <TableBody>
 
                   {paymentHistory.map(
                     (payment) => (
+
                       <TableRow
                         key={payment._id}
                       >
 
                         <TableCell>
+
                           {formatDate(
                             payment.payment_date
                           )}
+
                         </TableCell>
+
 
                         <TableCell className="font-mono text-sm break-all">
+
                           {payment.transaction_id}
+
                         </TableCell>
 
+
                         <TableCell>
+
                           {getMonthName(
                             payment.month
                           )}{' '}
+
                           {payment.year}
+
                         </TableCell>
 
+
                         <TableCell className="text-right text-green-600 font-medium">
+
                           {formatAmount(
                             payment.amount
                           )}
+
                         </TableCell>
+
 
                         <TableCell className="text-right">
 
@@ -1368,13 +2040,17 @@ export default function MaintenancePage() {
                             }
                             className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                           >
+
                             <Download className="w-4 h-4 mr-1" />
+
                             PDF
+
                           </Button>
 
                         </TableCell>
 
                       </TableRow>
+
                     )
                   )}
 
@@ -1385,13 +2061,19 @@ export default function MaintenancePage() {
             </div>
 
           </CardContent>
+
         </Card>
+
       )}
 
+
       {/* Payment Success Dialog */}
+
       <Dialog
         open={showSuccess}
-        onOpenChange={setShowSuccess}
+        onOpenChange={
+          setShowSuccess
+        }
       >
 
         <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md rounded-xl">
@@ -1399,14 +2081,20 @@ export default function MaintenancePage() {
           <DialogHeader>
 
             <DialogTitle className="text-center text-xl sm:text-2xl">
+
               🎉 Payment Successful!
+
             </DialogTitle>
 
+
             <DialogDescription className="text-center">
+
               Your maintenance payment has been received
+
             </DialogDescription>
 
           </DialogHeader>
+
 
           <div className="space-y-4 py-4">
 
@@ -1418,43 +2106,58 @@ export default function MaintenancePage() {
                 stroke="currentColor"
                 viewBox="0 0 24 24"
               >
+
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
                   d="M5 13l4 4L19 7"
                 />
+
               </svg>
 
             </div>
 
+
             {lastPayment && (
+
               <div className="bg-gray-50 rounded-lg p-4 space-y-3">
 
                 <div className="flex justify-between gap-4">
+
                   <span className="text-gray-500">
                     Amount
                   </span>
 
                   <span className="font-semibold text-green-600">
+
                     {formatAmount(
                       lastPayment.amount
                     )}
+
                   </span>
+
                 </div>
 
+
                 <div className="flex justify-between gap-4">
+
                   <span className="text-gray-500">
                     Month
                   </span>
 
                   <span className="font-medium text-right">
+
                     {getMonthName(
                       lastPayment.month
                     )}{' '}
+
                     {lastPayment.year}
+
                   </span>
+
                 </div>
+
 
                 <div className="flex flex-col gap-1">
 
@@ -1463,18 +2166,26 @@ export default function MaintenancePage() {
                   </span>
 
                   <span className="font-mono text-xs break-all">
+
                     {lastPayment.transaction_id}
+
                   </span>
 
                 </div>
 
               </div>
+
             )}
 
+
             <p className="text-center text-sm text-gray-500">
+
               A confirmation email has been sent to{' '}
+
               {user?.email}
+
             </p>
+
 
             <div className="flex flex-col sm:flex-row gap-3">
 
@@ -1485,17 +2196,25 @@ export default function MaintenancePage() {
                   handleDownloadCurrentReceipt
                 }
               >
+
                 <Download className="w-4 h-4 mr-2" />
+
                 Download Receipt
+
               </Button>
+
 
               <Button
                 className="w-full sm:flex-1"
                 onClick={() =>
-                  setShowSuccess(false)
+                  setShowSuccess(
+                    false
+                  )
                 }
               >
+
                 Done
+
               </Button>
 
             </div>
@@ -1507,5 +2226,7 @@ export default function MaintenancePage() {
       </Dialog>
 
     </div>
+
   );
+
 }

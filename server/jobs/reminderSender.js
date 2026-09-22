@@ -15,6 +15,20 @@ const isValidObjectId = (id) => {
 
 
 // ============================================================
+// MAINTENANCE USERS
+//
+// Resident + Admin + Manager have personal maintenance.
+// Watchman + Super Admin do not.
+// ============================================================
+
+const MAINTENANCE_ROLES = [
+  'resident',
+  'admin',
+  'manager'
+];
+
+
+// ============================================================
 // SEND PAYMENT REMINDERS
 //
 // societyId optional:
@@ -93,7 +107,7 @@ const sendPaymentReminders = async (
     // --------------------------------------------------------
     // GET CURRENT MONTH UNPAID MAINTENANCE
     //
-    // Manager is excluded later.
+    // Resident + Admin + Manager
     // --------------------------------------------------------
 
     const maintenanceRecords =
@@ -163,26 +177,13 @@ const sendPaymentReminders = async (
 
 
       // ------------------------------------------------------
-      // MANAGER HAS NO PERSONAL MAINTENANCE
+      // ONLY RESIDENT / ADMIN / MANAGER
       // ------------------------------------------------------
 
       if (
-        user.role === 'manager'
-      ) {
-        skipped++;
-        continue;
-      }
-
-
-      // ------------------------------------------------------
-      // ONLY RESIDENT / ADMIN
-      // ------------------------------------------------------
-
-      if (
-        ![
-          'resident',
-          'admin'
-        ].includes(user.role)
+        !MAINTENANCE_ROLES.includes(
+          user.role
+        )
       ) {
         skipped++;
         continue;
@@ -259,6 +260,9 @@ const sendPaymentReminders = async (
         flat_no:
           user.flat_no,
 
+        role:
+          user.role,
+
         month,
 
         year,
@@ -289,17 +293,11 @@ const sendPaymentReminders = async (
       // ------------------------------------------------------
       // EMAIL
       // ------------------------------------------------------
-      //
-      // Keep this independent from DB.
-      //
-      // If your project already has an email utility,
-      // call it here.
-      // ------------------------------------------------------
 
       try {
 
         console.log(
-          `Payment reminder prepared for ${user.email} - Flat ${user.flat_no}`
+          `Payment reminder prepared for ${user.email} - Flat ${user.flat_no} - Role ${user.role}`
         );
 
         /*
@@ -393,10 +391,6 @@ const sendPaymentReminders = async (
 //
 // month/year are optional.
 // societyId is optional.
-//
-// IMPORTANT:
-// Previous code was passing societyId as "month".
-// This version fixes that.
 // ============================================================
 
 const sendRemindersByType = async (
@@ -609,6 +603,10 @@ const sendRemindersByType = async (
         maintenance.user_id;
 
 
+      // ------------------------------------------------------
+      // USER NOT FOUND
+      // ------------------------------------------------------
+
       if (!user) {
         skipped++;
         continue;
@@ -616,26 +614,13 @@ const sendRemindersByType = async (
 
 
       // ------------------------------------------------------
-      // MANAGER EXCLUDED
+      // ONLY RESIDENT / ADMIN / MANAGER
       // ------------------------------------------------------
 
       if (
-        user.role === 'manager'
-      ) {
-        skipped++;
-        continue;
-      }
-
-
-      // ------------------------------------------------------
-      // ONLY RESIDENT / ADMIN
-      // ------------------------------------------------------
-
-      if (
-        ![
-          'resident',
-          'admin'
-        ].includes(user.role)
+        !MAINTENANCE_ROLES.includes(
+          user.role
+        )
       ) {
         skipped++;
         continue;
@@ -685,6 +670,10 @@ const sendRemindersByType = async (
       }
 
 
+      // ------------------------------------------------------
+      // REMINDER DATA
+      // ------------------------------------------------------
+
       const reminderData = {
 
         type,
@@ -709,6 +698,9 @@ const sendRemindersByType = async (
 
         flat_no:
           user.flat_no,
+
+        role:
+          user.role,
 
         month:
           targetMonth,
@@ -746,7 +738,7 @@ const sendRemindersByType = async (
       try {
 
         console.log(
-          `${type} reminder prepared for ${user.email} - Flat ${user.flat_no}`
+          `${type} reminder prepared for ${user.email} - Flat ${user.flat_no} - Role ${user.role}`
         );
 
         /*
@@ -839,8 +831,6 @@ const sendRemindersByType = async (
 // SCHEDULED PAYMENT REMINDERS
 //
 // This can be called by node-cron.
-//
-// Existing reminder schedule can call this function.
 // ============================================================
 
 const schedulePaymentReminders = async () => {

@@ -13,11 +13,16 @@ const razorpay = require('../config/razorpay');
 let emailService;
 
 try {
-  emailService = require('../services/email.service');
+
+  emailService =
+    require('../services/email.service');
+
 } catch (e) {
+
   console.log(
     'Email service not configured yet'
   );
+
 }
 
 
@@ -26,37 +31,63 @@ try {
 // ============================================================
 
 const getSocietyId = (req) => {
+
   return req.user?.society_id || null;
+
 };
 
 
 const isSuperAdmin = (req) => {
+
   return req.user?.role === 'super_admin';
+
 };
 
 
 const isManager = (req) => {
+
   return req.user?.role === 'manager';
+
 };
 
 
 const isAdminOrManager = (req) => {
+
   return [
     'admin',
     'manager'
-  ].includes(req.user?.role);
+  ].includes(
+    req.user?.role
+  );
+
+};
+
+
+const isMaintenanceUser = (req) => {
+
+  return [
+    'resident',
+    'admin',
+    'manager'
+  ].includes(
+    req.user?.role
+  );
+
 };
 
 
 const isValidObjectId = (id) => {
+
   return mongoose.Types.ObjectId.isValid(id);
+
 };
 
 
 // ============================================================
 // VERIFY PAYMENT
-// Resident/Admin can pay their own maintenance
-// Manager cannot make personal maintenance payments
+//
+// Resident/Admin/Manager can pay their own maintenance.
+// Super Admin has no personal maintenance.
 // ============================================================
 
 exports.verifyPayment = async (
@@ -64,18 +95,26 @@ exports.verifyPayment = async (
   res,
   next
 ) => {
+
   try {
 
     // ========================================================
-    // MANAGER CANNOT MAKE PERSONAL MAINTENANCE PAYMENT
+    // ONLY MAINTENANCE USERS
     // ========================================================
 
-    if (isManager(req)) {
+    if (
+      !isMaintenanceUser(req)
+    ) {
+
       return res.status(403).json({
+
         success: false,
+
         message:
-          'Managers do not have personal maintenance payments'
+          'You do not have personal maintenance payments.'
+
       });
+
     }
 
 
@@ -84,7 +123,7 @@ exports.verifyPayment = async (
       razorpay_payment_id,
       razorpay_signature,
       maintenance_id
-    } = req.body;
+    } = req.body || {};
 
 
     const societyId =
@@ -92,11 +131,16 @@ exports.verifyPayment = async (
 
 
     if (!societyId) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
-          'User is not assigned to any society'
+          'User is not assigned to any society.'
+
       });
+
     }
 
 
@@ -106,52 +150,69 @@ exports.verifyPayment = async (
       !razorpay_signature ||
       !maintenance_id
     ) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
-          'Missing required payment verification fields'
+          'Missing required payment verification fields.'
+
       });
+
     }
 
 
-    if (!isValidObjectId(maintenance_id)) {
+    if (
+      !isValidObjectId(
+        maintenance_id
+      )
+    ) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
-          'Invalid maintenance ID'
+          'Invalid maintenance ID.'
+
       });
+
     }
 
+
+    // ========================================================
+    // FIND MAINTENANCE
+    //
+    // Society + owner both checked.
+    // ========================================================
 
     const maintenance =
       await Maintenance.findOne({
-        _id: maintenance_id,
-        society_id: societyId
+
+        _id:
+          maintenance_id,
+
+        society_id:
+          societyId,
+
+        user_id:
+          req.user._id
+
       });
 
 
     if (!maintenance) {
+
       return res.status(404).json({
+
         success: false,
+
         message:
-          'Maintenance record not found in your society'
+          'Maintenance record not found in your society.'
+
       });
-    }
 
-
-    // ========================================================
-    // ONLY MAINTENANCE OWNER CAN PAY
-    // ========================================================
-
-    if (
-      maintenance.user_id.toString() !==
-      req.user._id.toString()
-    ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          'You are not authorized to pay this maintenance'
-      });
     }
 
 
@@ -163,11 +224,16 @@ exports.verifyPayment = async (
       maintenance.razorpay_order_id !==
       razorpay_order_id
     ) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
-          'Order ID mismatch'
+          'Order ID mismatch.'
+
       });
+
     }
 
 
@@ -178,11 +244,16 @@ exports.verifyPayment = async (
     if (
       maintenance.status === 'paid'
     ) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
-          'This maintenance has already been paid'
+          'This maintenance has already been paid.'
+
       });
+
     }
 
 
@@ -210,11 +281,16 @@ exports.verifyPayment = async (
       expectedSignature !==
       razorpay_signature
     ) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
           'Invalid payment signature. Payment verification failed.'
+
       });
+
     }
 
 
@@ -225,8 +301,10 @@ exports.verifyPayment = async (
     maintenance.status =
       'paid';
 
+
     maintenance.paid_date =
       new Date();
+
 
     maintenance.razorpay_payment_id =
       razorpay_payment_id;
@@ -241,8 +319,10 @@ exports.verifyPayment = async (
 
     let paymentLog =
       await PaymentLog.findOne({
+
         transaction_id:
           razorpay_payment_id
+
       });
 
 
@@ -283,7 +363,9 @@ exports.verifyPayment = async (
 
           razorpay_signature:
             razorpay_signature
+
         });
+
     }
 
 
@@ -334,6 +416,7 @@ exports.verifyPayment = async (
         );
 
       }
+
     }
 
 
@@ -394,12 +477,15 @@ exports.verifyPayment = async (
     );
 
     next(error);
+
   }
+
 };
 
 
 // ============================================================
 // GET ALL PAYMENTS
+//
 // Super Admin = ALL SOCIETIES
 // Manager/Admin = OWN SOCIETY
 // ============================================================
@@ -456,15 +542,22 @@ exports.getAllPayments = async (
             society_id
           )
         ) {
+
           return res.status(400).json({
+
             success: false,
+
             message:
               'Invalid society ID'
+
           });
+
         }
+
 
         query.society_id =
           society_id;
+
       }
 
     } else {
@@ -472,16 +565,24 @@ exports.getAllPayments = async (
       const currentSociety =
         getSocietyId(req);
 
+
       if (!currentSociety) {
+
         return res.status(400).json({
+
           success: false,
+
           message:
             'User is not assigned to any society'
+
         });
+
       }
+
 
       query.society_id =
         currentSociety;
+
     }
 
 
@@ -490,7 +591,10 @@ exports.getAllPayments = async (
     // ========================================================
 
     if (status) {
-      query.status = status;
+
+      query.status =
+        status;
+
     }
 
 
@@ -506,20 +610,26 @@ exports.getAllPayments = async (
           'i'
         );
 
+
       query.$or = [
+
         {
           transaction_id:
             regex
         },
+
         {
           razorpay_order_id:
             regex
         },
+
         {
           flat_no:
             regex
         }
+
       ];
+
     }
 
 
@@ -540,11 +650,17 @@ exports.getAllPayments = async (
 
 
     const allowedSortFields = [
+
       'payment_date',
+
       'amount',
+
       'created_at',
+
       'month',
+
       'year'
+
     ];
 
 
@@ -557,8 +673,10 @@ exports.getAllPayments = async (
 
 
     const sort = {
+
       [safeSortBy]:
         sortOrder
+
     };
 
 
@@ -568,24 +686,42 @@ exports.getAllPayments = async (
 
     const payments =
       await PaymentLog.find(query)
+
         .populate(
+
           'user_id',
+
           'name email phone flat_no role'
+
         )
+
         .populate(
+
           'society_id',
+
           'name society_code city state'
+
         )
+
         .populate(
+
           'maintenance_id',
+
           'month year amount total_amount status'
+
         )
+
         .sort(sort)
+
         .skip(
           (pageNumber - 1) *
             limitNumber
         )
-        .limit(limitNumber)
+
+        .limit(
+          limitNumber
+        )
+
         .lean();
 
 
@@ -593,7 +729,8 @@ exports.getAllPayments = async (
 
       success: true,
 
-      data: payments,
+      data:
+        payments,
 
       pagination: {
 
@@ -623,12 +760,15 @@ exports.getAllPayments = async (
     );
 
     next(error);
+
   }
+
 };
 
 
 // ============================================================
 // PAYMENT STATS
+//
 // Super Admin = ALL SOCIETIES
 // Manager/Admin = OWN SOCIETY
 // ============================================================
@@ -662,17 +802,24 @@ exports.getPaymentStats = async (
             society_id
           )
         ) {
+
           return res.status(400).json({
+
             success: false,
+
             message:
               'Invalid society ID'
+
           });
+
         }
+
 
         match.society_id =
           new mongoose.Types.ObjectId(
             society_id
           );
+
       }
 
     } else {
@@ -680,18 +827,26 @@ exports.getPaymentStats = async (
       const currentSociety =
         getSocietyId(req);
 
+
       if (!currentSociety) {
+
         return res.status(400).json({
+
           success: false,
+
           message:
             'User is not assigned to any society'
+
         });
+
       }
+
 
       match.society_id =
         new mongoose.Types.ObjectId(
           currentSociety.toString()
         );
+
     }
 
 
@@ -710,22 +865,34 @@ exports.getPaymentStats = async (
         {
           $group: {
 
-            _id: null,
+            _id:
+              null,
 
             totalPayments: {
-              $sum: 1
+
+              $sum:
+                1
+
             },
 
             totalAmount: {
+
               $sum: {
+
                 $ifNull: [
+
                   '$amount',
+
                   0
+
                 ]
+
               }
+
             }
 
           }
+
         }
 
       ]);
@@ -733,8 +900,13 @@ exports.getPaymentStats = async (
 
     const stats =
       result[0] || {
-        totalPayments: 0,
-        totalAmount: 0
+
+        totalPayments:
+          0,
+
+        totalAmount:
+          0
+
       };
 
 
@@ -762,15 +934,18 @@ exports.getPaymentStats = async (
     );
 
     next(error);
+
   }
+
 };
 
 
 // ============================================================
 // GET PAYMENT DETAILS
+//
 // Super Admin = ANY SOCIETY
 // Manager/Admin = OWN SOCIETY
-// Resident = OWN PAYMENT
+// Resident/Manager = OWN PAYMENT
 // ============================================================
 
 exports.getPaymentDetails = async (
@@ -791,16 +966,24 @@ exports.getPaymentDetails = async (
         paymentId
       )
     ) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
           'Invalid payment ID'
+
       });
+
     }
 
 
     const query = {
-      _id: paymentId
+
+      _id:
+        paymentId
+
     };
 
 
@@ -815,16 +998,24 @@ exports.getPaymentDetails = async (
       const societyId =
         getSocietyId(req);
 
+
       if (!societyId) {
+
         return res.status(400).json({
+
           success: false,
+
           message:
             'User is not assigned to any society'
+
         });
+
       }
+
 
       query.society_id =
         societyId;
+
     }
 
 
@@ -832,23 +1023,37 @@ exports.getPaymentDetails = async (
       await PaymentLog.findOne(
         query
       )
+
         .populate(
+
           'user_id',
+
           'name email flat_no phone role'
+
         )
+
         .populate(
+
           'society_id',
+
           'name society_code city state'
+
         )
+
         .lean();
 
 
     if (!payment) {
+
       return res.status(404).json({
+
         success: false,
+
         message:
           'Payment not found'
+
       });
+
     }
 
 
@@ -869,10 +1074,14 @@ exports.getPaymentDetails = async (
     ) {
 
       return res.status(403).json({
+
         success: false,
+
         message:
           'Not authorized to view this payment'
+
       });
+
     }
 
 
@@ -893,14 +1102,17 @@ exports.getPaymentDetails = async (
     );
 
     next(error);
+
   }
+
 };
 
 
 // ============================================================
 // PAYMENT STATUS
-// Resident/Admin can check their payment
-// Manager cannot check personal payment status
+//
+// Resident/Admin/Manager can check their payment.
+// Super Admin can check payment.
 // ============================================================
 
 exports.getPaymentStatus = async (
@@ -911,36 +1123,30 @@ exports.getPaymentStatus = async (
 
   try {
 
-    // ========================================================
-    // MANAGER DOES NOT HAVE PERSONAL PAYMENT STATUS
-    // ========================================================
-
-    if (isManager(req)) {
-      return res.status(403).json({
-        success: false,
-        message:
-          'Managers do not have personal maintenance payments'
-      });
-    }
-
-
     const {
       orderId
     } = req.params;
 
 
     if (!orderId) {
+
       return res.status(400).json({
+
         success: false,
+
         message:
           'Order ID is required'
+
       });
+
     }
 
 
     const query = {
+
       razorpay_order_id:
         orderId
+
     };
 
 
@@ -955,16 +1161,24 @@ exports.getPaymentStatus = async (
       const societyId =
         getSocietyId(req);
 
+
       if (!societyId) {
+
         return res.status(400).json({
+
           success: false,
+
           message:
             'User is not assigned to any society'
+
         });
+
       }
+
 
       query.society_id =
         societyId;
+
     }
 
 
@@ -975,16 +1189,21 @@ exports.getPaymentStatus = async (
 
 
     if (!maintenance) {
+
       return res.status(404).json({
+
         success: false,
+
         message:
           'Payment order not found'
+
       });
+
     }
 
 
     // ========================================================
-    // OWNER / ADMIN / SUPER ADMIN ACCESS
+    // OWNER / ADMIN / MANAGER / SUPER ADMIN
     // ========================================================
 
     const isOwner =
@@ -999,10 +1218,14 @@ exports.getPaymentStatus = async (
     ) {
 
       return res.status(403).json({
+
         success: false,
+
         message:
           'Not authorized to view this payment status'
+
       });
+
     }
 
 
@@ -1084,7 +1307,9 @@ exports.getPaymentStatus = async (
     );
 
     next(error);
+
   }
+
 };
 
 
@@ -1110,9 +1335,14 @@ exports.handleWebhook = async (
         'Razorpay webhook secret not configured'
       );
 
+
       return res.status(200).json({
-        received: true
+
+        received:
+          true
+
       });
+
     }
 
 
@@ -1125,10 +1355,14 @@ exports.handleWebhook = async (
     if (!signature) {
 
       return res.status(400).json({
+
         success: false,
+
         message:
           'Missing webhook signature'
+
       });
+
     }
 
 
@@ -1154,10 +1388,14 @@ exports.handleWebhook = async (
     ) {
 
       return res.status(400).json({
+
         success: false,
+
         message:
           'Invalid webhook signature'
+
       });
+
     }
 
 
@@ -1215,7 +1453,10 @@ exports.handleWebhook = async (
 
 
     return res.status(200).json({
-      received: true
+
+      received:
+        true
+
     });
 
   } catch (error) {
@@ -1225,17 +1466,26 @@ exports.handleWebhook = async (
       error
     );
 
+
     return res.status(200).json({
-      received: true,
+
+      received:
+        true,
+
       error:
         error.message
+
     });
+
   }
+
 };
 
 
 // ============================================================
 // PAYMENT CAPTURED
+//
+// Resident/Admin/Manager all supported.
 // ============================================================
 
 async function handlePaymentCaptured(
@@ -1258,8 +1508,10 @@ async function handlePaymentCaptured(
 
     const maintenance =
       await Maintenance.findOne({
+
         razorpay_order_id:
           orderId
+
       });
 
 
@@ -1271,6 +1523,7 @@ async function handlePaymentCaptured(
       );
 
       return;
+
     }
 
 
@@ -1282,6 +1535,7 @@ async function handlePaymentCaptured(
       );
 
       return;
+
     }
 
 
@@ -1296,11 +1550,12 @@ async function handlePaymentCaptured(
       );
 
       return;
+
     }
 
 
     // ========================================================
-    // DO NOT CREATE PAYMENT FOR MANAGER
+    // VERIFY OWNER USER EXISTS
     // ========================================================
 
     const maintenanceUser =
@@ -1309,31 +1564,87 @@ async function handlePaymentCaptured(
         .findById(
           maintenance.user_id
         )
-        .select('role');
+        .select(
+          'role society_id is_active'
+        );
 
+
+    if (!maintenanceUser) {
+
+      console.log(
+        'Maintenance owner not found:',
+        maintenance.user_id
+      );
+
+      return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // ONLY VALID MAINTENANCE ROLES
+    // --------------------------------------------------------
 
     if (
-      maintenanceUser &&
-      maintenanceUser.role === 'manager'
+      ![
+        'resident',
+        'admin',
+        'manager'
+      ].includes(
+        maintenanceUser.role
+      )
     ) {
 
       console.log(
-        'Skipping manager maintenance payment:',
+        'Invalid maintenance owner role:',
+        maintenanceUser.role
+      );
+
+      return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // SOCIETY VALIDATION
+    // --------------------------------------------------------
+
+    if (
+      maintenanceUser.society_id &&
+      maintenanceUser.society_id.toString() !==
+        maintenance.society_id.toString()
+    ) {
+
+      console.log(
+        'Maintenance society mismatch:',
         maintenance._id
       );
 
       return;
+
     }
+
+
+    // ========================================================
+    // MARK PAID
+    // ========================================================
+
+    const paymentDate =
+      payment.created_at
+        ? new Date(
+            payment.created_at *
+            1000
+          )
+        : new Date();
 
 
     maintenance.status =
       'paid';
 
+
     maintenance.paid_date =
-      new Date(
-        payment.created_at *
-        1000
-      );
+      paymentDate;
+
 
     maintenance.razorpay_payment_id =
       paymentId;
@@ -1348,8 +1659,10 @@ async function handlePaymentCaptured(
 
     const existingLog =
       await PaymentLog.findOne({
+
         transaction_id:
           paymentId
+
       });
 
 
@@ -1373,10 +1686,7 @@ async function handlePaymentCaptured(
           maintenance.total_amount,
 
         payment_date:
-          new Date(
-            payment.created_at *
-            1000
-          ),
+          paymentDate,
 
         transaction_id:
           paymentId,
@@ -1398,6 +1708,72 @@ async function handlePaymentCaptured(
     }
 
 
+    // ========================================================
+    // PAYMENT CONFIRMATION EMAIL
+    // ========================================================
+
+    if (
+      emailService &&
+      emailService.sendPaymentConfirmation
+    ) {
+
+      try {
+
+        const user =
+          await mongoose
+            .model('User')
+            .findById(
+              maintenance.user_id
+            )
+            .select(
+              'name email'
+            );
+
+
+        if (user?.email) {
+
+          await emailService.sendPaymentConfirmation({
+
+            email:
+              user.email,
+
+            name:
+              user.name,
+
+            flat_no:
+              maintenance.flat_no,
+
+            amount:
+              maintenance.total_amount,
+
+            month:
+              maintenance.month,
+
+            year:
+              maintenance.year,
+
+            transaction_id:
+              paymentId,
+
+            payment_date:
+              paymentDate
+
+          });
+
+        }
+
+      } catch (emailError) {
+
+        console.error(
+          'Failed to send webhook payment confirmation email:',
+          emailError
+        );
+
+      }
+
+    }
+
+
     console.log(
       'Payment captured via webhook:',
       paymentId
@@ -1411,6 +1787,7 @@ async function handlePaymentCaptured(
     );
 
   }
+
 }
 
 
@@ -1429,10 +1806,15 @@ async function handlePaymentFailed(
 
 
     console.log(
+
       'Payment failed for order:',
+
       payment.order_id,
+
       'Reason:',
+
       payment.error_description
+
     );
 
   } catch (error) {
@@ -1443,6 +1825,7 @@ async function handlePaymentFailed(
     );
 
   }
+
 }
 
 
@@ -1473,4 +1856,12 @@ async function handleOrderPaid(
     );
 
   }
+
 };
+
+
+// ============================================================
+// EXPORTS
+// ============================================================
+
+module.exports = exports;
