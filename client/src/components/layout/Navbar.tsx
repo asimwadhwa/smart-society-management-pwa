@@ -174,10 +174,34 @@ const superAdminItems: NavItem[] = [
   },
 
   {
+    href: '/admin/societies',
+    label: 'Societies',
+    icon: (
+      <Building2 className="w-4 h-4" />
+    ),
+  },
+
+  {
     href: '/admin/users',
     label: 'Manage Users',
     icon: (
       <Users className="w-4 h-4" />
+    ),
+  },
+
+  {
+    href: '/admin/payments',
+    label: 'Payments',
+    icon: (
+      <BarChart3 className="w-4 h-4" />
+    ),
+  },
+
+  {
+    href: '/admin/complaints',
+    label: 'Complaints',
+    icon: (
+      <FileText className="w-4 h-4" />
     ),
   },
 ];
