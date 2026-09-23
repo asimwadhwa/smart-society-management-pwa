@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import {
   Card,
@@ -69,10 +69,17 @@ type ReportType =
 interface ReportData {
   summary?: Record<string, any>;
   records?: any[];
+
   society_id?: string | null;
+
   all_societies?: boolean;
+
   society_wise?: any[];
+
   byStatus?: Record<string, any>;
+
+  by_status?: Record<string, any>;
+
   by_type?: Record<string, any>;
 }
 
@@ -180,7 +187,7 @@ export default function ReportsPage() {
     user?.role === 'super_admin';
 
   const canViewReports =
-    user &&
+    !!user &&
     [
       'super_admin',
       'manager',
@@ -197,36 +204,46 @@ export default function ReportsPage() {
 
       maintenance: {
         title: 'Maintenance Report',
+
         description:
           'Maintenance collection, pending payments and overdue payments.',
+
         icon: IndianRupee,
       },
 
       complaints: {
         title: 'Complaint Report',
+
         description:
           'Complaint status, residents and complaint dates.',
+
         icon: MessageSquare,
       },
 
       emergency: {
         title: 'Emergency Report',
+
         description:
           'Emergency alerts, active cases and resolution details.',
+
         icon: Siren,
       },
 
       users: {
         title: 'Users / Residents Report',
+
         description:
           'Residents, managers, admins and user status.',
+
         icon: Users,
       },
 
       assets: {
         title: 'Assets Report',
+
         description:
           'Lift, water pump, generator and service status.',
+
         icon: Wrench,
       },
 
@@ -531,6 +548,7 @@ export default function ReportsPage() {
           error
         );
 
+
         const message =
           error?.response?.data?.message ||
           error?.message ||
@@ -558,6 +576,86 @@ export default function ReportsPage() {
         setLoadingReport(false);
 
       }
+
+    };
+
+
+  // ==========================================================
+  // GET MAINTENANCE COUNT
+  // ==========================================================
+
+  const getMaintenanceCount =
+    (
+      value: any
+    ): number => {
+
+      if (
+        typeof value === 'number'
+      ) {
+
+        return value;
+
+      }
+
+
+      if (
+        value &&
+        typeof value === 'object'
+      ) {
+
+        return Number(
+          value.count || 0
+        );
+
+      }
+
+
+      return 0;
+
+    };
+
+
+  // ==========================================================
+  // GET SUMMARY VALUE
+  // ==========================================================
+
+  const getSummaryValue =
+    (
+      camelCaseKey: string,
+      snakeCaseKey: string,
+      defaultValue: any = 0
+    ) => {
+
+      if (!report?.summary) {
+
+        return defaultValue;
+
+      }
+
+
+      const summary =
+        report.summary;
+
+
+      if (
+        summary[camelCaseKey] !== undefined
+      ) {
+
+        return summary[camelCaseKey];
+
+      }
+
+
+      if (
+        summary[snakeCaseKey] !== undefined
+      ) {
+
+        return summary[snakeCaseKey];
+
+      }
+
+
+      return defaultValue;
 
     };
 
@@ -639,6 +737,7 @@ export default function ReportsPage() {
 
               society?: {
                 name?: string;
+
                 society_code?: string;
               };
 
@@ -728,7 +827,9 @@ export default function ReportsPage() {
         'en-IN',
         {
           style: 'currency',
+
           currency: 'INR',
+
           maximumFractionDigits: 2,
         }
       ).format(
@@ -746,7 +847,9 @@ export default function ReportsPage() {
     (value: any) => {
 
       if (!value) {
+
         return '-';
+
       }
 
 
@@ -769,7 +872,9 @@ export default function ReportsPage() {
         'en-IN',
         {
           day: '2-digit',
+
           month: 'short',
+
           year: 'numeric',
         }
       );
@@ -785,7 +890,9 @@ export default function ReportsPage() {
     (value: any) => {
 
       if (!value) {
+
         return '-';
+
       }
 
 
@@ -808,9 +915,13 @@ export default function ReportsPage() {
         'en-IN',
         {
           day: '2-digit',
+
           month: 'short',
+
           year: 'numeric',
+
           hour: '2-digit',
+
           minute: '2-digit',
         }
       );
@@ -843,6 +954,7 @@ export default function ReportsPage() {
           'paid',
           'resolved',
           'working',
+          'active',
         ].includes(normalized)
       ) {
 
@@ -856,7 +968,6 @@ export default function ReportsPage() {
         [
           'pending',
           'open',
-          'active',
           'under_maintenance',
           'in-progress',
         ].includes(normalized)
@@ -872,6 +983,7 @@ export default function ReportsPage() {
         [
           'overdue',
           'not_working',
+          'inactive',
         ].includes(normalized)
       ) {
 
@@ -1240,11 +1352,13 @@ export default function ReportsPage() {
                             society._id
                           }
                         >
+
                           {society.name}
 
                           {society.society_code
                             ? ` (${society.society_code})`
                             : ''}
+
                         </option>
 
                       )
@@ -1287,12 +1401,15 @@ export default function ReportsPage() {
                   {(
                     user as typeof user & {
                       society_name?: string;
+
                       society?: {
                         name?: string;
+
                         society_code?: string;
                       };
                     }
                   )?.society_name ||
+
                     (
                       user as typeof user & {
                         society?: {
@@ -1300,6 +1417,7 @@ export default function ReportsPage() {
                         };
                       }
                     )?.society?.name ||
+
                     'My Society'}
 
                 </div>
@@ -2263,7 +2381,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Total Records"
                   value={
-                    report.summary?.totalRecords ?? 0
+                    getSummaryValue(
+                      'totalRecords',
+                      'total_records',
+                      0
+                    )
                   }
                   icon={
                     <FileText
@@ -2280,7 +2402,9 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Paid"
                   value={
-                    report.summary?.paid ?? 0
+                    getMaintenanceCount(
+                      report.summary?.paid
+                    )
                   }
                   icon={
                     <CheckCircle
@@ -2297,7 +2421,9 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Pending"
                   value={
-                    report.summary?.pending ?? 0
+                    getMaintenanceCount(
+                      report.summary?.pending
+                    )
                   }
                   icon={
                     <Clock
@@ -2314,7 +2440,9 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Overdue"
                   value={
-                    report.summary?.overdue ?? 0
+                    getMaintenanceCount(
+                      report.summary?.overdue
+                    )
                   }
                   icon={
                     <AlertTriangle
@@ -2355,28 +2483,47 @@ export default function ReportsPage() {
                     <AmountBox
                       title="Total Expected"
                       value={
-                        report.summary?.totalExpected
+                        getSummaryValue(
+                          'totalExpected',
+                          'total_expected',
+                          0
+                        )
                       }
                     />
+
 
                     <AmountBox
                       title="Total Collected"
                       value={
-                        report.summary?.totalCollected
+                        getSummaryValue(
+                          'totalCollected',
+                          'total_collected',
+                          0
+                        )
                       }
                     />
+
 
                     <AmountBox
                       title="Pending Amount"
                       value={
-                        report.summary?.totalPending
+                        getSummaryValue(
+                          'totalPending',
+                          'total_pending',
+                          0
+                        )
                       }
                     />
+
 
                     <AmountBox
                       title="Late Fee"
                       value={
-                        report.summary?.totalLateFee
+                        getSummaryValue(
+                          'totalLateFee',
+                          'total_late_fee',
+                          0
+                        )
                       }
                     />
 
@@ -2484,7 +2631,10 @@ export default function ReportsPage() {
 
                               <td className="px-4 py-3">
 
-                                {record.user_id?.name || '-'}
+                                {
+                                  record.user_id?.name ||
+                                  '-'
+                                }
 
                               </td>
 
@@ -2584,8 +2734,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Total Complaints"
                   value={
-                    report.summary?.total_complaints ??
-                    0
+                    getSummaryValue(
+                      'total_complaints',
+                      'totalComplaints',
+                      0
+                    )
                   }
                   icon={
                     <MessageSquare
@@ -2602,8 +2755,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Open"
                   value={
-                    report.summary?.open ??
-                    0
+                    getSummaryValue(
+                      'open',
+                      'open',
+                      0
+                    )
                   }
                   icon={
                     <Clock
@@ -2620,8 +2776,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="In Progress"
                   value={
-                    report.summary?.in_progress ??
-                    0
+                    getSummaryValue(
+                      'in_progress',
+                      'inProgress',
+                      0
+                    )
                   }
                   icon={
                     <RefreshCw
@@ -2638,8 +2797,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Resolved"
                   value={
-                    report.summary?.resolved ??
-                    0
+                    getSummaryValue(
+                      'resolved',
+                      'resolved',
+                      0
+                    )
                   }
                   icon={
                     <CheckCircle
@@ -2754,7 +2916,10 @@ export default function ReportsPage() {
 
                               <td className="px-4 py-3">
 
-                                {record.flat_no || '-'}
+                                {
+                                  record.flat_no ||
+                                  '-'
+                                }
 
                               </td>
 
@@ -2831,8 +2996,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Total Emergencies"
                   value={
-                    report.summary?.total_emergencies ??
-                    0
+                    getSummaryValue(
+                      'total_emergencies',
+                      'totalEmergencies',
+                      0
+                    )
                   }
                   icon={
                     <Siren
@@ -2849,8 +3017,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Active"
                   value={
-                    report.summary?.active ??
-                    0
+                    getSummaryValue(
+                      'active',
+                      'active',
+                      0
+                    )
                   }
                   icon={
                     <AlertTriangle
@@ -2867,8 +3038,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Resolved"
                   value={
-                    report.summary?.resolved ??
-                    0
+                    getSummaryValue(
+                      'resolved',
+                      'resolved',
+                      0
+                    )
                   }
                   icon={
                     <CheckCircle
@@ -2970,7 +3144,10 @@ export default function ReportsPage() {
 
                               <td className="px-4 py-3">
 
-                                {record.flat_no || '-'}
+                                {
+                                  record.flat_no ||
+                                  '-'
+                                }
 
                               </td>
 
@@ -3057,8 +3234,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Total Users"
                   value={
-                    report.summary?.total_users ??
-                    0
+                    getSummaryValue(
+                      'total_users',
+                      'totalUsers',
+                      0
+                    )
                   }
                   icon={
                     <Users
@@ -3075,8 +3255,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Residents"
                   value={
-                    report.summary?.residents ??
-                    0
+                    getSummaryValue(
+                      'residents',
+                      'residents',
+                      0
+                    )
                   }
                   icon={
                     <Users
@@ -3093,8 +3276,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Managers"
                   value={
-                    report.summary?.managers ??
-                    0
+                    getSummaryValue(
+                      'managers',
+                      'managers',
+                      0
+                    )
                   }
                   icon={
                     <Building2
@@ -3111,8 +3297,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Admins"
                   value={
-                    report.summary?.admins ??
-                    0
+                    getSummaryValue(
+                      'admins',
+                      'admins',
+                      0
+                    )
                   }
                   icon={
                     <CheckCircle
@@ -3139,8 +3328,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Active Users"
                   value={
-                    report.summary?.active ??
-                    0
+                    getSummaryValue(
+                      'active',
+                      'active',
+                      0
+                    )
                   }
                   icon={
                     <CheckCircle
@@ -3157,8 +3349,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Inactive Users"
                   value={
-                    report.summary?.inactive ??
-                    0
+                    getSummaryValue(
+                      'inactive',
+                      'inactive',
+                      0
+                    )
                   }
                   icon={
                     <Clock
@@ -3231,9 +3426,11 @@ export default function ReportsPage() {
                           </th>
 
                           {isSuperAdmin && (
+
                             <th className="px-4 py-3">
                               Society
                             </th>
+
                           )}
 
                         </tr>
@@ -3385,8 +3582,11 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Total Assets"
                   value={
-                    report.summary?.total_assets ??
-                    0
+                    getSummaryValue(
+                      'total_assets',
+                      'totalAssets',
+                      0
+                    )
                   }
                   icon={
                     <Wrench
@@ -3403,9 +3603,13 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Working"
                   value={
-                    report.summary?.working ??
-                    report.summary?.by_status?.working ??
-                    0
+                    getSummaryValue(
+                      'working',
+                      'working',
+                      report.summary?.by_status?.working ||
+                      report.summary?.byStatus?.working ||
+                      0
+                    )
                   }
                   icon={
                     <CheckCircle
@@ -3422,9 +3626,13 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Under Maintenance"
                   value={
-                    report.summary?.under_maintenance ??
-                    report.summary?.by_status?.under_maintenance ??
-                    0
+                    getSummaryValue(
+                      'under_maintenance',
+                      'underMaintenance',
+                      report.summary?.by_status?.under_maintenance ||
+                      report.summary?.byStatus?.under_maintenance ||
+                      0
+                    )
                   }
                   icon={
                     <Clock
@@ -3441,9 +3649,13 @@ export default function ReportsPage() {
                 <SummaryCard
                   title="Not Working"
                   value={
-                    report.summary?.not_working ??
-                    report.summary?.by_status?.not_working ??
-                    0
+                    getSummaryValue(
+                      'not_working',
+                      'notWorking',
+                      report.summary?.by_status?.not_working ||
+                      report.summary?.byStatus?.not_working ||
+                      0
+                    )
                   }
                   icon={
                     <AlertTriangle
@@ -3516,9 +3728,11 @@ export default function ReportsPage() {
                           </th>
 
                           {isSuperAdmin && (
+
                             <th className="px-4 py-3">
                               Society
                             </th>
+
                           )}
 
                         </tr>
@@ -3734,8 +3948,10 @@ function SummaryCard({
   icon,
 }: {
   title: string;
+
   value: any;
-  icon: React.ReactNode;
+
+  icon: ReactNode;
 }) {
 
   return (
@@ -3776,7 +3992,9 @@ function SummaryCard({
                 text-gray-900
               "
             >
+
               {value ?? 0}
+
             </p>
 
           </div>
@@ -3814,6 +4032,7 @@ function AmountBox({
   value,
 }: {
   title: string;
+
   value: any;
 }) {
 
@@ -3852,7 +4071,9 @@ function AmountBox({
           'en-IN',
           {
             style: 'currency',
+
             currency: 'INR',
+
             maximumFractionDigits: 2,
           }
         ).format(
@@ -3875,7 +4096,7 @@ function AmountBox({
 function ResponsiveTable({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
 
   return (
