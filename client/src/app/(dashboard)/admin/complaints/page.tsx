@@ -6,6 +6,7 @@ import Image from 'next/image';
 import api from '@/lib/api';
 
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 import { Button } from '@/components/ui/button';
 
@@ -126,6 +127,7 @@ interface Complaint {
 export default function AdminComplaintsPage() {
 
   const { toast } = useToast();
+  const { user } = useAuth();
 
 
   // ==========================================================
@@ -229,6 +231,15 @@ export default function AdminComplaintsPage() {
   const fetchSocieties = useCallback(
     async () => {
 
+      // Managers already belong to one society and do not have
+      // permission to access the global /societies endpoint.
+      // Their complaints are loaded directly from /complaints/all.
+      if (user?.role === 'manager') {
+        setSocieties([]);
+        setSocietiesLoading(false);
+        return;
+      }
+
       setSocietiesLoading(true);
 
       try {
@@ -236,9 +247,7 @@ export default function AdminComplaintsPage() {
         const response =
           await api.get('/societies');
 
-        if (
-          response.data?.success
-        ) {
+        if (response.data?.success) {
 
           const societyData =
             response.data.data || [];
@@ -249,6 +258,10 @@ export default function AdminComplaintsPage() {
               : []
           );
 
+        } else {
+
+          setSocieties([]);
+
         }
 
       } catch (error: any) {
@@ -258,13 +271,20 @@ export default function AdminComplaintsPage() {
           error
         );
 
-        toast({
-          title: 'Error',
-          description:
-            error?.response?.data?.message ||
-            'Failed to fetch societies',
-          variant: 'destructive',
-        });
+        setSocieties([]);
+
+        // Do not show a 403 toast to managers.
+        if (user?.role !== 'manager') {
+
+          toast({
+            title: 'Error',
+            description:
+              error?.response?.data?.message ||
+              'Failed to fetch societies',
+            variant: 'destructive',
+          });
+
+        }
 
       } finally {
 
@@ -273,9 +293,8 @@ export default function AdminComplaintsPage() {
       }
 
     },
-    [toast]
+    [toast, user?.role]
   );
-
 
   // ==========================================================
   // FETCH COMPLAINTS
@@ -817,7 +836,9 @@ export default function AdminComplaintsPage() {
               truncate
             "
           >
-            All Complaints
+            {user?.role === 'manager'
+              ? 'Society Complaints'
+              : 'All Complaints'}
           </h1>
 
           <p
@@ -828,7 +849,9 @@ export default function AdminComplaintsPage() {
               mt-1
             "
           >
-            Manage complaints from all residents
+            {user?.role === 'manager'
+              ? 'Manage complaints from residents of your society'
+              : 'Manage complaints from all residents'}
           </p>
 
         </div>
@@ -866,124 +889,109 @@ export default function AdminComplaintsPage() {
           SOCIETY FILTER
       ====================================================== */}
 
-      <Card>
+      {user?.role !== 'manager' && (
+        <Card>
 
-        <CardHeader
-          className="pb-3"
-        >
-
-          <CardTitle
-            className="text-base"
-          >
-            Society
-          </CardTitle>
-
-          <CardDescription>
-            Select a society to view only its complaints
-          </CardDescription>
-
-        </CardHeader>
-
-
-        <CardContent>
-
-          <Select
-            value={
-              selectedSocietyId
-            }
-            onValueChange={
-              handleSocietyChange
-            }
-            disabled={
-              societiesLoading
-            }
+          <CardHeader
+            className="pb-3"
           >
 
-            <SelectTrigger
-              className="
-                w-full
-                sm:w-[320px]
-              "
+            <CardTitle
+              className="text-base"
+            >
+              Society
+            </CardTitle>
+
+            <CardDescription>
+              Select a society to view only its complaints
+            </CardDescription>
+
+          </CardHeader>
+
+          <CardContent>
+
+            <Select
+              value={selectedSocietyId}
+              onValueChange={handleSocietyChange}
+              disabled={societiesLoading}
             >
 
-              <SelectValue
-                placeholder="Select Society"
-              />
-
-            </SelectTrigger>
-
-
-            <SelectContent>
-
-              <SelectItem
-                value="all"
+              <SelectTrigger
+                className="w-full sm:w-[320px]"
               >
-                All Societies
-              </SelectItem>
 
+                <SelectValue
+                  placeholder="Select Society"
+                />
 
-              {societies.map(
-                society => (
+              </SelectTrigger>
 
-                  <SelectItem
-                    key={
-                      society._id
-                    }
-                    value={
-                      society._id
-                    }
-                  >
-                    {society.name}
-                    {' '}
-                    ({society.society_code})
-                  </SelectItem>
+              <SelectContent>
 
-                )
-              )}
+                <SelectItem value="all">
+                  All Societies
+                </SelectItem>
 
-            </SelectContent>
+                {societies.map(
+                  society => (
 
-          </Select>
+                    <SelectItem
+                      key={society._id}
+                      value={society._id}
+                    >
+                      {society.name}{' '}
+                      ({society.society_code})
+                    </SelectItem>
 
-        </CardContent>
+                  )
+                )}
 
-      </Card>
+              </SelectContent>
+
+            </Select>
+
+          </CardContent>
+
+        </Card>
+      )}
 
 
       {/* ======================================================
           SELECTED SOCIETY TITLE
       ====================================================== */}
 
-      <div
-        className="
-          rounded-lg
-          border
-          bg-white
-          px-4
-          py-3
-        "
-      >
-
-        <p
+      {user?.role !== 'manager' && (
+        <div
           className="
-            text-sm
-            text-gray-500
+            rounded-lg
+            border
+            bg-white
+            px-4
+            py-3
           "
         >
-          Showing complaints for
-        </p>
 
-        <p
-          className="
-            text-lg
-            font-semibold
-            text-gray-900
-          "
-        >
-          {selectedSocietyName}
-        </p>
+          <p
+            className="
+              text-sm
+              text-gray-500
+            "
+          >
+            Showing complaints for
+          </p>
 
-      </div>
+          <p
+            className="
+              text-lg
+              font-semibold
+              text-gray-900
+            "
+          >
+            {selectedSocietyName}
+          </p>
+
+        </div>
+      )}
 
 
       {/* ======================================================
