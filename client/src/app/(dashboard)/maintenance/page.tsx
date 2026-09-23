@@ -51,6 +51,7 @@ import {
 
 import { generateReceiptPDF } from '@/lib/generateReceipt';
 
+
 /* =========================================================
    RAZORPAY TYPES
 ========================================================= */
@@ -122,6 +123,23 @@ interface OrderData {
   };
 }
 
+
+/* =========================================================
+   SOCIETY USER TYPE
+========================================================= */
+
+interface UserWithSociety {
+  society_name?: string;
+
+  society?: {
+    name?: string;
+    society_code?: string;
+  };
+
+  society_id?: string | null;
+}
+
+
 /* =========================================================
    PAGE
 ========================================================= */
@@ -164,6 +182,7 @@ export default function MaintenancePage() {
     year: number;
   } | null>(null);
 
+
   /* =========================================================
      LOAD RAZORPAY
   ========================================================= */
@@ -197,9 +216,10 @@ export default function MaintenancePage() {
     };
   }, []);
 
+
   /* =========================================================
      FETCH MAINTENANCE DATA
-     
+
      IMPORTANT:
      Promise.allSettled() is used so that if one API fails,
      other maintenance/payment data can still load.
@@ -225,6 +245,7 @@ export default function MaintenancePage() {
             '/maintenance/history'
           ),
         ]);
+
 
         /* =====================================================
            CURRENT MAINTENANCE
@@ -264,6 +285,7 @@ export default function MaintenancePage() {
           );
         }
 
+
         /* =====================================================
            MAINTENANCE HISTORY
         ===================================================== */
@@ -302,6 +324,7 @@ export default function MaintenancePage() {
           );
         }
 
+
         /* =====================================================
            PAYMENT HISTORY
         ===================================================== */
@@ -339,6 +362,7 @@ export default function MaintenancePage() {
             paymentResult.reason
           );
         }
+
 
         /* =====================================================
            SHOW ERROR ONLY IF ALL THREE FAILED
@@ -380,9 +404,11 @@ export default function MaintenancePage() {
     [toast]
   );
 
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
 
   /* =========================================================
      PAY NOW
@@ -404,6 +430,7 @@ export default function MaintenancePage() {
 
     try {
       setPaying(true);
+
 
       /* =====================================================
          CREATE ORDER
@@ -429,6 +456,7 @@ export default function MaintenancePage() {
 
       const orderData: OrderData =
         orderRes.data.data;
+
 
       /* =====================================================
          RAZORPAY OPTIONS
@@ -457,6 +485,7 @@ export default function MaintenancePage() {
 
           order_id:
             orderData.order_id,
+
 
           /* =================================================
              PAYMENT SUCCESS
@@ -510,10 +539,12 @@ export default function MaintenancePage() {
                     true
                   );
 
+
                   /*
                    * Reload maintenance and
                    * payment history after payment.
                    */
+
                   await fetchData();
 
                   toast({
@@ -554,6 +585,7 @@ export default function MaintenancePage() {
               }
             },
 
+
           prefill: {
             name:
               orderData.prefill.name,
@@ -565,10 +597,12 @@ export default function MaintenancePage() {
               orderData.prefill.contact,
           },
 
+
           theme: {
             color:
               '#0D9488',
           },
+
 
           modal: {
             ondismiss: () => {
@@ -576,6 +610,7 @@ export default function MaintenancePage() {
             },
           },
         };
+
 
       /* =====================================================
          OPEN RAZORPAY
@@ -611,6 +646,7 @@ export default function MaintenancePage() {
     }
   };
 
+
   /* =========================================================
      HELPERS
   ========================================================= */
@@ -639,6 +675,7 @@ export default function MaintenancePage() {
     );
   };
 
+
   const formatDate = (
     dateStr: string
   ) => {
@@ -654,6 +691,7 @@ export default function MaintenancePage() {
     );
   };
 
+
   const formatAmount = (
     amount: number
   ) => {
@@ -666,6 +704,23 @@ export default function MaintenancePage() {
       }
     ).format(amount);
   };
+
+
+  /* =========================================================
+     GET SOCIETY NAME FOR RECEIPT
+  ========================================================= */
+
+  const getReceiptSocietyName = () => {
+    const societyUser =
+      user as UserWithSociety | null;
+
+    return (
+      societyUser?.society_name ||
+      societyUser?.society?.name ||
+      'Smart Society Management'
+    );
+  };
+
 
   /* =========================================================
      DOWNLOAD PAYMENT RECEIPT
@@ -695,7 +750,11 @@ export default function MaintenancePage() {
 
       userName:
         user?.name || '',
+
+      societyName:
+        getReceiptSocietyName(),
     });
+
 
     toast({
       title:
@@ -705,6 +764,7 @@ export default function MaintenancePage() {
         'Your payment receipt has been downloaded successfully.',
     });
   };
+
 
   /* =========================================================
      DOWNLOAD CURRENT RECEIPT
@@ -737,7 +797,11 @@ export default function MaintenancePage() {
 
         userName:
           user?.name || '',
+
+        societyName:
+          getReceiptSocietyName(),
       });
+
 
       toast({
         title:
@@ -747,6 +811,7 @@ export default function MaintenancePage() {
           'Your payment receipt has been downloaded successfully.',
       });
     };
+
 
   /* =========================================================
      LOADING
@@ -765,6 +830,7 @@ export default function MaintenancePage() {
             View and pay your maintenance dues
           </p>
         </div>
+
 
         <div className="grid gap-6 md:grid-cols-2">
 
@@ -790,6 +856,7 @@ export default function MaintenancePage() {
     );
   }
 
+
   /* =========================================================
      MAIN PAGE
   ========================================================= */
@@ -812,6 +879,7 @@ export default function MaintenancePage() {
         </p>
 
       </div>
+
 
       {/* =====================================================
           CURRENT MONTH
@@ -844,6 +912,7 @@ export default function MaintenancePage() {
 
               </CardTitle>
 
+
               <div className="self-start sm:self-auto">
 
                 <StatusBadge
@@ -871,6 +940,7 @@ export default function MaintenancePage() {
             </div>
 
           </CardHeader>
+
 
           <CardContent className="space-y-5">
 
@@ -921,6 +991,7 @@ export default function MaintenancePage() {
 
               </div>
 
+
               <div className="sm:text-right">
 
                 <p className="text-sm text-gray-500">
@@ -934,6 +1005,7 @@ export default function MaintenancePage() {
               </div>
 
             </div>
+
 
             {/* =================================================
                 PENDING / OVERDUE
@@ -967,6 +1039,7 @@ export default function MaintenancePage() {
 
                 </div>
 
+
                 <Button
                   onClick={() =>
                     handlePayNow(
@@ -994,6 +1067,7 @@ export default function MaintenancePage() {
 
               </div>
             )}
+
 
             {/* =================================================
                 PAID
@@ -1039,6 +1113,7 @@ export default function MaintenancePage() {
         </Card>
       )}
 
+
       {/* =====================================================
           PAYMENT HISTORY
       ===================================================== */}
@@ -1052,6 +1127,7 @@ export default function MaintenancePage() {
           </CardTitle>
 
         </CardHeader>
+
 
         <CardContent>
 
@@ -1106,6 +1182,7 @@ export default function MaintenancePage() {
 
                         </div>
 
+
                         <StatusBadge
                           variant={
                             paymentStatusVariant[
@@ -1127,6 +1204,7 @@ export default function MaintenancePage() {
 
                       </div>
 
+
                       <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
 
                         <div>
@@ -1145,6 +1223,7 @@ export default function MaintenancePage() {
 
                         </div>
 
+
                         <div>
 
                           <p className="text-xs text-gray-500">
@@ -1160,6 +1239,7 @@ export default function MaintenancePage() {
                           </p>
 
                         </div>
+
 
                         <div>
 
@@ -1178,6 +1258,7 @@ export default function MaintenancePage() {
                           </p>
 
                         </div>
+
 
                         <div>
 
@@ -1203,6 +1284,7 @@ export default function MaintenancePage() {
                         </div>
 
                       </div>
+
 
                       {maintenance.status !==
                       'paid' ? (
@@ -1260,8 +1342,12 @@ export default function MaintenancePage() {
 
                                 lateFee:
                                   maintenance.late_fee,
+
+                                societyName:
+                                  getReceiptSocietyName(),
                               }
                             );
+
 
                             toast({
                               title:
@@ -1286,6 +1372,7 @@ export default function MaintenancePage() {
                 )}
 
               </div>
+
 
               {/* =================================================
                   DESKTOP
@@ -1323,6 +1410,7 @@ export default function MaintenancePage() {
 
                   </TableHeader>
 
+
                   <TableBody>
 
                     {maintenanceHistory.map(
@@ -1343,6 +1431,7 @@ export default function MaintenancePage() {
                             {maintenance.year}
 
                           </TableCell>
+
 
                           <TableCell>
 
@@ -1368,6 +1457,7 @@ export default function MaintenancePage() {
 
                           </TableCell>
 
+
                           <TableCell>
 
                             {formatDate(
@@ -1375,6 +1465,7 @@ export default function MaintenancePage() {
                             )}
 
                           </TableCell>
+
 
                           <TableCell>
 
@@ -1398,6 +1489,7 @@ export default function MaintenancePage() {
                             </StatusBadge>
 
                           </TableCell>
+
 
                           <TableCell className="text-right">
 
@@ -1430,6 +1522,7 @@ export default function MaintenancePage() {
                                     : ''}
 
                                 </span>
+
 
                                 <Button
                                   variant="ghost"
@@ -1464,8 +1557,12 @@ export default function MaintenancePage() {
 
                                         lateFee:
                                           maintenance.late_fee,
+
+                                        societyName:
+                                          getReceiptSocietyName(),
                                       }
                                     );
+
 
                                     toast({
                                       title:
@@ -1505,6 +1602,7 @@ export default function MaintenancePage() {
 
       </Card>
 
+
       {/* =====================================================
           TRANSACTION HISTORY
       ===================================================== */}
@@ -1524,6 +1622,7 @@ export default function MaintenancePage() {
             </CardTitle>
 
           </CardHeader>
+
 
           <CardContent>
 
@@ -1559,6 +1658,7 @@ export default function MaintenancePage() {
 
                       </div>
 
+
                       <div>
 
                         <p className="text-xs text-gray-500">
@@ -1572,6 +1672,7 @@ export default function MaintenancePage() {
                         </p>
 
                       </div>
+
 
                       <div className="grid grid-cols-2 gap-4">
 
@@ -1593,6 +1694,7 @@ export default function MaintenancePage() {
 
                         </div>
 
+
                         <div>
 
                           <p className="text-xs text-gray-500">
@@ -1610,6 +1712,7 @@ export default function MaintenancePage() {
                         </div>
 
                       </div>
+
 
                       <Button
                         variant="outline"
@@ -1635,6 +1738,7 @@ export default function MaintenancePage() {
               )}
 
             </div>
+
 
             {/* =================================================
                 DESKTOP
@@ -1672,6 +1776,7 @@ export default function MaintenancePage() {
 
                 </TableHeader>
 
+
                 <TableBody>
 
                   {paymentHistory.map(
@@ -1689,11 +1794,13 @@ export default function MaintenancePage() {
 
                         </TableCell>
 
+
                         <TableCell className="font-mono text-sm break-all">
 
                           {payment.transaction_id}
 
                         </TableCell>
+
 
                         <TableCell>
 
@@ -1705,6 +1812,7 @@ export default function MaintenancePage() {
 
                         </TableCell>
 
+
                         <TableCell className="text-right text-green-600 font-medium">
 
                           {formatAmount(
@@ -1712,6 +1820,7 @@ export default function MaintenancePage() {
                           )}
 
                         </TableCell>
+
 
                         <TableCell className="text-right">
 
@@ -1749,6 +1858,7 @@ export default function MaintenancePage() {
         </Card>
       )}
 
+
       {/* =====================================================
           PAYMENT SUCCESS DIALOG
       ===================================================== */}
@@ -1778,6 +1888,7 @@ export default function MaintenancePage() {
 
           </DialogHeader>
 
+
           <div className="space-y-4 py-4">
 
             <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
@@ -1800,6 +1911,7 @@ export default function MaintenancePage() {
 
             </div>
 
+
             {lastPayment && (
 
               <div className="bg-gray-50 rounded-lg p-4 space-y-3">
@@ -1820,6 +1932,7 @@ export default function MaintenancePage() {
 
                 </div>
 
+
                 <div className="flex justify-between gap-4">
 
                   <span className="text-gray-500">
@@ -1838,6 +1951,7 @@ export default function MaintenancePage() {
 
                 </div>
 
+
                 <div className="flex flex-col gap-1">
 
                   <span className="text-gray-500">
@@ -1855,6 +1969,7 @@ export default function MaintenancePage() {
               </div>
             )}
 
+
             <p className="text-center text-sm text-gray-500">
 
               A confirmation email has been sent to{' '}
@@ -1862,6 +1977,7 @@ export default function MaintenancePage() {
               {user?.email}
 
             </p>
+
 
             <div className="flex flex-col sm:flex-row gap-3">
 
@@ -1878,6 +1994,7 @@ export default function MaintenancePage() {
                 Download Receipt
 
               </Button>
+
 
               <Button
                 className="w-full sm:flex-1"
