@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
+
 import {
   Avatar,
   AvatarFallback,
@@ -40,6 +41,7 @@ import {
   Shield,
   User,
   Crown,
+  FileBarChart,
 } from 'lucide-react';
 
 import {
@@ -70,7 +72,9 @@ interface NavItem {
 
 interface UserWithSociety {
   society_id?: string | null;
+
   society_name?: string;
+
   society?: {
     name?: string;
     society_code?: string;
@@ -83,6 +87,7 @@ interface UserWithSociety {
 // ============================================================
 
 const navItems: NavItem[] = [
+
   {
     href: '/',
     label: 'Dashboard',
@@ -114,6 +119,7 @@ const navItems: NavItem[] = [
       <AlertTriangle className="w-4 h-4" />
     ),
   },
+
 ];
 
 
@@ -122,13 +128,18 @@ const navItems: NavItem[] = [
 // ============================================================
 
 const adminItems: NavItem[] = [
+
   {
     href: '/admin/users',
     label: 'Manage Users',
     icon: (
       <Users className="w-4 h-4" />
     ),
-    roles: ['manager', 'admin', 'super_admin'],
+    roles: [
+      'manager',
+      'admin',
+      'super_admin',
+    ],
   },
 
   {
@@ -137,7 +148,10 @@ const adminItems: NavItem[] = [
     icon: (
       <BarChart3 className="w-4 h-4" />
     ),
-    roles: ['manager', 'admin'],
+    roles: [
+      'manager',
+      'admin',
+    ],
   },
 
   {
@@ -146,7 +160,10 @@ const adminItems: NavItem[] = [
     icon: (
       <FileText className="w-4 h-4" />
     ),
-    roles: ['manager', 'admin'],
+    roles: [
+      'manager',
+      'admin',
+    ],
   },
 
   {
@@ -155,8 +172,28 @@ const adminItems: NavItem[] = [
     icon: (
       <Settings className="w-4 h-4" />
     ),
-    roles: ['manager', 'admin'],
+    roles: [
+      'manager',
+      'admin',
+    ],
   },
+
+  // ==========================================================
+  // REPORTS - NEW
+  // ==========================================================
+
+  {
+    href: '/reports',
+    label: 'Reports',
+    icon: (
+      <FileBarChart className="w-4 h-4" />
+    ),
+    roles: [
+      'manager',
+      'admin',
+    ],
+  },
+
 ];
 
 
@@ -165,6 +202,7 @@ const adminItems: NavItem[] = [
 // ============================================================
 
 const superAdminItems: NavItem[] = [
+
   {
     href: '/',
     label: 'Dashboard',
@@ -204,6 +242,19 @@ const superAdminItems: NavItem[] = [
       <FileText className="w-4 h-4" />
     ),
   },
+
+  // ==========================================================
+  // REPORTS - NEW
+  // ==========================================================
+
+  {
+    href: '/reports',
+    label: 'Reports',
+    icon: (
+      <FileBarChart className="w-4 h-4" />
+    ),
+  },
+
 ];
 
 
@@ -213,13 +264,17 @@ const superAdminItems: NavItem[] = [
 
 export default function Navbar() {
 
-  const pathname = usePathname();
-  const router = useRouter();
+  const pathname =
+    usePathname();
+
+  const router =
+    useRouter();
 
   const {
     user,
     logout,
   } = useAuth();
+
 
   const [
     mobileMenuOpen,
@@ -236,7 +291,10 @@ export default function Navbar() {
 
   const isAdmin =
     user &&
-    ['manager', 'admin'].includes(
+    [
+      'manager',
+      'admin',
+    ].includes(
       user.role
     );
 
@@ -355,7 +413,9 @@ export default function Navbar() {
   // ==========================================================
 
   const handleNavClick = () => {
+
     setMobileMenuOpen(false);
+
   };
 
 
@@ -1079,6 +1139,7 @@ export default function Navbar() {
                 ) : (
 
                   <>
+
                     {/* ======================================
                         NORMAL MENU
                     ====================================== */}
@@ -1330,5 +1391,6 @@ export default function Navbar() {
       </div>
 
     </header>
+
   );
 }

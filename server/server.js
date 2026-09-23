@@ -48,6 +48,13 @@ const assetRoutes =
 const societyRoutes =
   require('./routes/society.routes');
 
+// ============================================================
+// REPORT ROUTES - NEW
+// ============================================================
+
+const reportRoutes =
+  require('./routes/report.routes');
+
 
 // ============================================================
 // IMPORT CRON JOBS
@@ -361,6 +368,16 @@ app.use(
 app.use(
   '/api/societies',
   societyRoutes
+);
+
+
+// ============================================================
+// REPORTS - NEW
+// ============================================================
+
+app.use(
+  '/api/reports',
+  reportRoutes
 );
 
 

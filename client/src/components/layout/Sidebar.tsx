@@ -110,6 +110,17 @@ const adminItems: NavItem[] = [
     icon: <Settings className="w-5 h-5" />,
     roles: ['manager', 'admin'],
   },
+
+  // ==========================================================
+  // REPORTS - NEW
+  // ==========================================================
+
+  {
+    href: '/reports',
+    label: 'Reports',
+    icon: <FileText className="w-5 h-5" />,
+    roles: ['manager', 'admin'],
+  },
 ];
 
 
@@ -141,6 +152,16 @@ const superAdminItems: NavItem[] = [
   {
     href: '/admin/complaints',
     label: 'Complaints',
+    icon: <FileText className="w-5 h-5" />,
+  },
+
+  // ==========================================================
+  // REPORTS - NEW
+  // ==========================================================
+
+  {
+    href: '/reports',
+    label: 'Reports',
     icon: <FileText className="w-5 h-5" />,
   },
 ];
@@ -293,9 +314,7 @@ export default function Sidebar() {
         "
       >
 
-        {/* ====================================================
-            USER BADGE
-        ==================================================== */}
+        {/* USER BADGE */}
 
         <div
           className="
@@ -413,9 +432,7 @@ export default function Sidebar() {
         </div>
 
 
-        {/* ====================================================
-            NAVIGATION
-        ==================================================== */}
+        {/* NAVIGATION */}
 
         <nav
           className="
@@ -424,9 +441,7 @@ export default function Sidebar() {
           "
         >
 
-          {/* ==================================================
-              SUPER ADMIN MENU
-          ================================================== */}
+          {/* SUPER ADMIN */}
 
           {isSuperAdmin ? (
 
@@ -498,9 +513,7 @@ export default function Sidebar() {
 
             <>
 
-              {/* ==============================================
-                  MAIN MENU
-              ============================================== */}
+              {/* MAIN MENU */}
 
               <div className="space-y-1">
 
@@ -567,9 +580,7 @@ export default function Sidebar() {
               </div>
 
 
-              {/* ==============================================
-                  ADMINISTRATION
-              ============================================== */}
+              {/* ADMINISTRATION */}
 
               {isAdmin && (
 
@@ -657,9 +668,7 @@ export default function Sidebar() {
         </nav>
 
 
-        {/* ====================================================
-            SIDEBAR FOOTER
-        ==================================================== */}
+        {/* SIDEBAR FOOTER */}
 
         <div
           className="
@@ -822,9 +831,7 @@ export default function Sidebar() {
           )}
 
 
-          {/* ==================================================
-              MOBILE ADMIN BUTTON
-          ================================================== */}
+          {/* MOBILE ADMIN BUTTON */}
 
           {!isSuperAdmin &&
             isAdmin && (
@@ -902,8 +909,6 @@ export default function Sidebar() {
 
           <>
 
-            {/* Backdrop */}
-
             <div
               className="
                 lg:hidden
@@ -917,8 +922,6 @@ export default function Sidebar() {
               }
             />
 
-
-            {/* Slide-up Panel */}
 
             <div
               className="
