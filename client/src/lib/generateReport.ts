@@ -694,7 +694,12 @@ const addTableHeader = (
   y: number
 ) => {
 
-  let x = 10;
+  // ==========================================================
+  // CHANGE: CENTER TABLE ON A4 LANDSCAPE PAGE
+  // ==========================================================
+
+  const pageWidth =
+    doc.internal.pageSize.getWidth();
 
   const totalWidth =
     widths.reduce(
@@ -706,6 +711,9 @@ const addTableHeader = (
       0
     );
 
+  let x =
+    (pageWidth - totalWidth) / 2;
+
 
   doc.setFillColor(
     241,
@@ -714,7 +722,7 @@ const addTableHeader = (
   );
 
   doc.rect(
-    10,
+    x,
     y - 5,
     totalWidth,
     9,
@@ -1135,12 +1143,6 @@ const generateMaintenanceReport = (
   );
 
 
-  doc.setFont(
-    'helvetica',
-    'normal'
-  );
-
-
   records.forEach(
     (
       record
@@ -1169,7 +1171,25 @@ const generateMaintenanceReport = (
       }
 
 
-      let x = 10;
+      // ========================================================
+      // CHANGE: CENTER TABLE ROW
+      // ========================================================
+
+      const pageWidth =
+        doc.internal.pageSize.getWidth();
+
+      const totalWidth =
+        widths.reduce(
+          (
+            total,
+            width
+          ) =>
+            total + width,
+          0
+        );
+
+      let x =
+        (pageWidth - totalWidth) / 2;
 
 
       const values = [
@@ -1256,10 +1276,13 @@ const generateMaintenanceReport = (
       );
 
 
+      // CHANGE: CENTER TABLE LINE
+
       doc.line(
-        10,
+        (pageWidth - totalWidth) / 2,
         y + 3,
-        238,
+        (pageWidth - totalWidth) / 2 +
+          totalWidth,
         y + 3
       );
 
@@ -1394,7 +1417,25 @@ const generateComplaintReport = (
       }
 
 
-      let x = 10;
+      // ========================================================
+      // CHANGE: CENTER TABLE ROW
+      // ========================================================
+
+      const pageWidth =
+        doc.internal.pageSize.getWidth();
+
+      const totalWidth =
+        widths.reduce(
+          (
+            total,
+            width
+          ) =>
+            total + width,
+          0
+        );
+
+      let x =
+        (pageWidth - totalWidth) / 2;
 
 
       const values = [
@@ -1467,10 +1508,13 @@ const generateComplaintReport = (
       );
 
 
+      // CHANGE: CENTER TABLE LINE
+
       doc.line(
-        10,
+        (pageWidth - totalWidth) / 2,
         y + 3,
-        238,
+        (pageWidth - totalWidth) / 2 +
+          totalWidth,
         y + 3
       );
 
@@ -1594,7 +1638,25 @@ const generateEmergencyReport = (
       }
 
 
-      let x = 10;
+      // ========================================================
+      // CHANGE: CENTER TABLE ROW
+      // ========================================================
+
+      const pageWidth =
+        doc.internal.pageSize.getWidth();
+
+      const totalWidth =
+        widths.reduce(
+          (
+            total,
+            width
+          ) =>
+            total + width,
+          0
+        );
+
+      let x =
+        (pageWidth - totalWidth) / 2;
 
 
       const values = [
@@ -1666,10 +1728,13 @@ const generateEmergencyReport = (
       );
 
 
+      // CHANGE: CENTER TABLE LINE
+
       doc.line(
-        10,
+        (pageWidth - totalWidth) / 2,
         y + 3,
-        238,
+        (pageWidth - totalWidth) / 2 +
+          totalWidth,
         y + 3
       );
 
@@ -1837,7 +1902,25 @@ const generateUsersReport = (
       }
 
 
-      let x = 10;
+      // ========================================================
+      // CHANGE: CENTER TABLE ROW
+      // ========================================================
+
+      const pageWidth =
+        doc.internal.pageSize.getWidth();
+
+      const totalWidth =
+        widths.reduce(
+          (
+            total,
+            width
+          ) =>
+            total + width,
+          0
+        );
+
+      let x =
+        (pageWidth - totalWidth) / 2;
 
 
       const societyName =
@@ -1917,10 +2000,13 @@ const generateUsersReport = (
       );
 
 
+      // CHANGE: CENTER TABLE LINE
+
       doc.line(
-        10,
+        (pageWidth - totalWidth) / 2,
         y + 3,
-        240,
+        (pageWidth - totalWidth) / 2 +
+          totalWidth,
         y + 3
       );
 
@@ -2067,7 +2153,25 @@ const generateAssetsReport = (
       }
 
 
-      let x = 10;
+      // ========================================================
+      // CHANGE: CENTER TABLE ROW
+      // ========================================================
+
+      const pageWidth =
+        doc.internal.pageSize.getWidth();
+
+      const totalWidth =
+        widths.reduce(
+          (
+            total,
+            width
+          ) =>
+            total + width,
+          0
+        );
+
+      let x =
+        (pageWidth - totalWidth) / 2;
 
 
       const societyName =
@@ -2160,10 +2264,13 @@ const generateAssetsReport = (
       );
 
 
+      // CHANGE: CENTER TABLE LINE
+
       doc.line(
-        10,
+        (pageWidth - totalWidth) / 2,
         y + 3,
-        240,
+        (pageWidth - totalWidth) / 2 +
+          totalWidth,
         y + 3
       );
 
