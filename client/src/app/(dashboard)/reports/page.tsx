@@ -41,7 +41,7 @@ import {
 
 import {
   generateReportPDF,
-} from '@/lib/generateReports';
+} from '@/lib/generateReport';
 
 
 // ============================================================
