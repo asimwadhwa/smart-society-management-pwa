@@ -1,6 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import {
   Card,
@@ -35,8 +40,8 @@ import {
 } from 'lucide-react';
 
 import {
-  generateMaintenanceReportPDF,
-} from '@/lib/generateReport';
+  generateReportPDF,
+} from '@/lib/generateReports';
 
 
 // ============================================================
@@ -68,6 +73,7 @@ type ReportType =
 
 interface ReportData {
   summary?: Record<string, any>;
+
   records?: any[];
 
   society_id?: string | null;
@@ -109,6 +115,9 @@ export default function ReportsPage() {
     useState(false);
 
   const [loadingReport, setLoadingReport] =
+    useState(false);
+
+  const [downloadingPDF, setDownloadingPDF] =
     useState(false);
 
   const [reportType, setReportType] =
@@ -209,6 +218,7 @@ export default function ReportsPage() {
           'Maintenance collection, pending payments and overdue payments.',
 
         icon: IndianRupee,
+
       },
 
       complaints: {
@@ -218,6 +228,7 @@ export default function ReportsPage() {
           'Complaint status, residents and complaint dates.',
 
         icon: MessageSquare,
+
       },
 
       emergency: {
@@ -227,6 +238,7 @@ export default function ReportsPage() {
           'Emergency alerts, active cases and resolution details.',
 
         icon: Siren,
+
       },
 
       users: {
@@ -236,6 +248,7 @@ export default function ReportsPage() {
           'Residents, managers, admins and user status.',
 
         icon: Users,
+
       },
 
       assets: {
@@ -245,6 +258,7 @@ export default function ReportsPage() {
           'Lift, water pump, generator and service status.',
 
         icon: Wrench,
+
       },
 
     }),
@@ -661,16 +675,129 @@ export default function ReportsPage() {
 
 
   // ==========================================================
-  // DOWNLOAD MAINTENANCE PDF
+  // GET SOCIETY INFORMATION FOR PDF
   // ==========================================================
 
-  const handleMaintenancePDF =
-    async () => {
+  const getPDFSocietyInfo =
+    () => {
+
+      let societyName =
+        'All Societies';
+
+      let societyCode =
+        '';
+
+
+      // ------------------------------------------------------
+      // SUPER ADMIN - SPECIFIC SOCIETY
+      // ------------------------------------------------------
 
       if (
-        !report ||
-        reportType !== 'maintenance'
+        isSuperAdmin &&
+        selectedSocietyId !== 'all'
       ) {
+
+        const selectedSociety =
+          societies.find(
+            society =>
+              society._id ===
+              selectedSocietyId
+          );
+
+
+        societyName =
+          selectedSociety?.name ||
+          'Society Management';
+
+
+        societyCode =
+          selectedSociety?.society_code ||
+          '';
+
+      }
+
+
+      // ------------------------------------------------------
+      // SUPER ADMIN - ALL SOCIETIES
+      // ------------------------------------------------------
+
+      if (
+        isSuperAdmin &&
+        selectedSocietyId === 'all'
+      ) {
+
+        societyName =
+          'All Societies';
+
+        societyCode =
+          '';
+
+      }
+
+
+      // ------------------------------------------------------
+      // MANAGER / ADMIN
+      // ------------------------------------------------------
+
+      if (
+        !isSuperAdmin
+      ) {
+
+        const currentUser =
+          user as typeof user & {
+
+            society_name?: string;
+
+            society?: {
+              name?: string;
+              society_code?: string;
+            };
+
+          };
+
+
+        societyName =
+          currentUser?.society_name ||
+          currentUser?.society?.name ||
+          'Society Management';
+
+
+        societyCode =
+          currentUser?.society?.society_code ||
+          '';
+
+      }
+
+
+      return {
+        societyName,
+        societyCode,
+      };
+
+    };
+
+
+  // ==========================================================
+  // DOWNLOAD ANY REPORT PDF
+  // ==========================================================
+
+  const handleDownloadPDF =
+    async () => {
+
+      if (!report) {
+
+        toast({
+
+          title:
+            'Generate Report First',
+
+          description:
+            'Please generate the report before downloading the PDF.',
+
+          variant:
+            'destructive',
+
+        });
 
         return;
 
@@ -679,97 +806,28 @@ export default function ReportsPage() {
 
       try {
 
-        setLoadingReport(true);
+        setDownloadingPDF(true);
 
 
-        const records =
-          report.records || [];
+        const {
+          societyName,
+          societyCode,
+        } =
+          getPDFSocietyInfo();
 
 
-        let societyName =
-          'All Societies';
+        generateReportPDF({
 
-        let societyCode =
-          '';
-
-
-        // ------------------------------------------------------
-        // SUPER ADMIN SELECTED SOCIETY
-        // ------------------------------------------------------
-
-        if (
-          isSuperAdmin &&
-          selectedSocietyId !== 'all'
-        ) {
-
-          const selectedSociety =
-            societies.find(
-              society =>
-                society._id ===
-                selectedSocietyId
-            );
-
-
-          societyName =
-            selectedSociety?.name ||
-            'Society Management';
-
-
-          societyCode =
-            selectedSociety?.society_code ||
-            '';
-
-        }
-
-
-        // ------------------------------------------------------
-        // MANAGER / ADMIN
-        // ------------------------------------------------------
-
-        if (
-          !isSuperAdmin
-        ) {
-
-          const currentUser =
-            user as typeof user & {
-
-              society_name?: string;
-
-              society?: {
-                name?: string;
-
-                society_code?: string;
-              };
-
-            };
-
-
-          societyName =
-            currentUser?.society_name ||
-            currentUser?.society?.name ||
-            'Society Management';
-
-
-          societyCode =
-            currentUser?.society?.society_code ||
-            '';
-
-        }
-
-
-        generateMaintenanceReportPDF({
+          reportType,
 
           societyName,
 
           societyCode,
 
-          records,
-
           generatedBy:
             user?.name || '',
 
-          reportTitle:
-            'Maintenance Report',
+          report,
 
         });
 
@@ -780,7 +838,7 @@ export default function ReportsPage() {
             'PDF Downloaded',
 
           description:
-            'Maintenance report PDF has been generated successfully.',
+            `${reportConfig[reportType].title} PDF has been generated successfully.`,
 
         });
 
@@ -809,7 +867,7 @@ export default function ReportsPage() {
 
       } finally {
 
-        setLoadingReport(false);
+        setDownloadingPDF(false);
 
       }
 
@@ -1188,7 +1246,7 @@ export default function ReportsPage() {
                 "
               >
                 View society reports and download
-                maintenance reports.
+                filtered PDF reports.
               </p>
 
             </div>
@@ -1207,7 +1265,8 @@ export default function ReportsPage() {
             handleLoadReport
           }
           disabled={
-            loadingReport
+            loadingReport ||
+            downloadingPDF
           }
         >
 
@@ -1242,7 +1301,7 @@ export default function ReportsPage() {
 
 
       {/* ======================================================
-          SOCIETY SELECTOR
+          SOCIETY + REPORT TYPE
       ====================================================== */}
 
       <Card>
@@ -1310,14 +1369,22 @@ export default function ReportsPage() {
                       selectedSocietyId
                     }
                     onChange={
-                      event =>
+                      event => {
+
                         setSelectedSocietyId(
                           event.target.value
-                        )
+                        );
+
+                        setReport(null);
+
+                        setError('');
+
+                      }
                     }
                     disabled={
                       loadingSocieties ||
-                      loadingReport
+                      loadingReport ||
+                      downloadingPDF
                     }
                     className="
                       w-full
@@ -1488,7 +1555,8 @@ export default function ReportsPage() {
                     }
                   }
                   disabled={
-                    loadingReport
+                    loadingReport ||
+                    downloadingPDF
                   }
                   className="
                     w-full
@@ -1549,7 +1617,7 @@ export default function ReportsPage() {
             </div>
 
 
-            {/* LOAD BUTTON */}
+            {/* GENERATE BUTTON */}
 
             <div>
 
@@ -1560,7 +1628,8 @@ export default function ReportsPage() {
                 }
                 disabled={
                   loadingReport ||
-                  loadingSocieties
+                  loadingSocieties ||
+                  downloadingPDF
                 }
                 className="
                   w-full
@@ -1583,7 +1652,7 @@ export default function ReportsPage() {
                       "
                     />
 
-                    Loading...
+                    Generating...
 
                   </>
 
@@ -1637,7 +1706,9 @@ export default function ReportsPage() {
 
         <CardContent>
 
-          {/* MAINTENANCE FILTERS */}
+          {/* ==================================================
+              MAINTENANCE FILTERS
+          ================================================== */}
 
           {reportType === 'maintenance' && (
 
@@ -1669,10 +1740,15 @@ export default function ReportsPage() {
                     selectedMonth
                   }
                   onChange={
-                    event =>
+                    event => {
+
                       setSelectedMonth(
                         event.target.value
-                      )
+                      );
+
+                      setReport(null);
+
+                    }
                   }
                   className="
                     w-full
@@ -1700,7 +1776,10 @@ export default function ReportsPage() {
                     'November',
                     'December',
                   ].map(
-                    (month, index) => (
+                    (
+                      month,
+                      index
+                    ) => (
 
                       <option
                         key={month}
@@ -1738,10 +1817,15 @@ export default function ReportsPage() {
                     selectedYear
                   }
                   onChange={
-                    event =>
+                    event => {
+
                       setSelectedYear(
                         event.target.value
-                      )
+                      );
+
+                      setReport(null);
+
+                    }
                   }
                   className="
                     w-full
@@ -1755,7 +1839,11 @@ export default function ReportsPage() {
                   "
                 >
 
-                  {[2026, 2025, 2024].map(
+                  {[
+                    2026,
+                    2025,
+                    2024,
+                  ].map(
                     year => (
 
                       <option
@@ -1794,10 +1882,15 @@ export default function ReportsPage() {
                     maintenanceStatus
                   }
                   onChange={
-                    event =>
+                    event => {
+
                       setMaintenanceStatus(
                         event.target.value
-                      )
+                      );
+
+                      setReport(null);
+
+                    }
                   }
                   className="
                     w-full
@@ -1836,7 +1929,9 @@ export default function ReportsPage() {
           )}
 
 
-          {/* COMPLAINT FILTER */}
+          {/* ==================================================
+              COMPLAINT FILTER
+          ================================================== */}
 
           {reportType === 'complaints' && (
 
@@ -1863,10 +1958,15 @@ export default function ReportsPage() {
                   complaintStatus
                 }
                 onChange={
-                  event =>
+                  event => {
+
                     setComplaintStatus(
                       event.target.value
-                    )
+                    );
+
+                    setReport(null);
+
+                  }
                 }
                 className="
                   w-full
@@ -1903,7 +2003,9 @@ export default function ReportsPage() {
           )}
 
 
-          {/* EMERGENCY FILTER */}
+          {/* ==================================================
+              EMERGENCY FILTER
+          ================================================== */}
 
           {reportType === 'emergency' && (
 
@@ -1930,10 +2032,15 @@ export default function ReportsPage() {
                   emergencyStatus
                 }
                 onChange={
-                  event =>
+                  event => {
+
                     setEmergencyStatus(
                       event.target.value
-                    )
+                    );
+
+                    setReport(null);
+
+                  }
                 }
                 className="
                   w-full
@@ -1966,7 +2073,9 @@ export default function ReportsPage() {
           )}
 
 
-          {/* USERS FILTER */}
+          {/* ==================================================
+              USERS FILTERS
+          ================================================== */}
 
           {reportType === 'users' && (
 
@@ -1997,10 +2106,15 @@ export default function ReportsPage() {
                     userRole
                   }
                   onChange={
-                    event =>
+                    event => {
+
                       setUserRole(
                         event.target.value
-                      )
+                      );
+
+                      setReport(null);
+
+                    }
                   }
                   className="
                     w-full
@@ -2058,10 +2172,15 @@ export default function ReportsPage() {
                     userActive
                   }
                   onChange={
-                    event =>
+                    event => {
+
                       setUserActive(
                         event.target.value
-                      )
+                      );
+
+                      setReport(null);
+
+                    }
                   }
                   className="
                     w-full
@@ -2096,7 +2215,9 @@ export default function ReportsPage() {
           )}
 
 
-          {/* ASSETS FILTER */}
+          {/* ==================================================
+              ASSET FILTERS
+          ================================================== */}
 
           {reportType === 'assets' && (
 
@@ -2127,10 +2248,15 @@ export default function ReportsPage() {
                     assetType
                   }
                   onChange={
-                    event =>
+                    event => {
+
                       setAssetType(
                         event.target.value
-                      )
+                      );
+
+                      setReport(null);
+
+                    }
                   }
                   className="
                     w-full
@@ -2184,10 +2310,15 @@ export default function ReportsPage() {
                     assetStatus
                   }
                   onChange={
-                    event =>
+                    event => {
+
                       setAssetStatus(
                         event.target.value
-                      )
+                      );
+
+                      setReport(null);
+
+                    }
                   }
                   className="
                     w-full
@@ -2264,7 +2395,7 @@ export default function ReportsPage() {
         <>
 
           {/* ==================================================
-              REPORT TITLE
+              REPORT HEADER + DOWNLOAD
           ================================================== */}
 
           <Card>
@@ -2308,6 +2439,7 @@ export default function ReportsPage() {
 
                   </CardTitle>
 
+
                   <p
                     className="
                       mt-1
@@ -2315,30 +2447,51 @@ export default function ReportsPage() {
                       text-gray-500
                     "
                   >
+
                     {
                       reportConfig[
                         reportType
                       ].description
                     }
+
                   </p>
 
                 </div>
 
 
-                {/* MAINTENANCE PDF */}
+                {/* =================================================
+                    DOWNLOAD PDF - ALL REPORT TYPES
+                ================================================= */}
 
-                {reportType === 'maintenance' && (
+                <Button
+                  type="button"
+                  onClick={
+                    handleDownloadPDF
+                  }
+                  disabled={
+                    downloadingPDF ||
+                    loadingReport
+                  }
+                  variant="outline"
+                  className="
+                    border-blue-200
+                    text-blue-700
+                    hover:bg-blue-50
+                  "
+                >
 
-                  <Button
-                    type="button"
-                    onClick={
-                      handleMaintenancePDF
-                    }
-                    disabled={
-                      loadingReport
-                    }
-                    variant="outline"
-                  >
+                  {downloadingPDF ? (
+
+                    <Loader2
+                      className="
+                        mr-2
+                        h-4
+                        w-4
+                        animate-spin
+                      "
+                    />
+
+                  ) : (
 
                     <Download
                       className="
@@ -2348,11 +2501,13 @@ export default function ReportsPage() {
                       "
                     />
 
-                    Download PDF
+                  )}
 
-                  </Button>
+                  {downloadingPDF
+                    ? 'Generating PDF...'
+                    : 'Download PDF'}
 
-                )}
+                </Button>
 
               </div>
 
@@ -2610,7 +2765,10 @@ export default function ReportsPage() {
                       >
 
                         {(report.records || []).map(
-                          (record, index) => (
+                          (
+                            record,
+                            index
+                          ) => (
 
                             <tr
                               key={
@@ -2874,17 +3032,26 @@ export default function ReportsPage() {
                       </thead>
 
 
-                      <tbody className="divide-y">
+                      <tbody
+                        className="
+                          divide-y
+                        "
+                      >
 
                         {(report.records || []).map(
-                          (record, index) => (
+                          (
+                            record,
+                            index
+                          ) => (
 
                             <tr
                               key={
                                 record._id ||
                                 index
                               }
-                              className="hover:bg-gray-50"
+                              className="
+                                hover:bg-gray-50
+                              "
                             >
 
                               <td className="px-4 py-3">
@@ -3119,17 +3286,26 @@ export default function ReportsPage() {
                       </thead>
 
 
-                      <tbody className="divide-y">
+                      <tbody
+                        className="
+                          divide-y
+                        "
+                      >
 
                         {(report.records || []).map(
-                          (record, index) => (
+                          (
+                            record,
+                            index
+                          ) => (
 
                             <tr
                               key={
                                 record._id ||
                                 index
                               }
-                              className="hover:bg-gray-50"
+                              className="
+                                hover:bg-gray-50
+                              "
                             >
 
                               <td className="px-4 py-3">
@@ -3438,17 +3614,26 @@ export default function ReportsPage() {
                       </thead>
 
 
-                      <tbody className="divide-y">
+                      <tbody
+                        className="
+                          divide-y
+                        "
+                      >
 
                         {(report.records || []).map(
-                          (record, index) => (
+                          (
+                            record,
+                            index
+                          ) => (
 
                             <tr
                               key={
                                 record._id ||
                                 index
                               }
-                              className="hover:bg-gray-50"
+                              className="
+                                hover:bg-gray-50
+                              "
                             >
 
                               <td className="px-4 py-3 font-medium">
@@ -3740,17 +3925,26 @@ export default function ReportsPage() {
                       </thead>
 
 
-                      <tbody className="divide-y">
+                      <tbody
+                        className="
+                          divide-y
+                        "
+                      >
 
                         {(report.records || []).map(
-                          (record, index) => (
+                          (
+                            record,
+                            index
+                          ) => (
 
                             <tr
                               key={
                                 record._id ||
                                 index
                               }
-                              className="hover:bg-gray-50"
+                              className="
+                                hover:bg-gray-50
+                              "
                             >
 
                               <td className="px-4 py-3 font-medium">
@@ -3860,7 +4054,7 @@ export default function ReportsPage() {
 
 
       {/* ======================================================
-          NO REPORT YET
+          NO REPORT
       ====================================================== */}
 
       {!report &&
