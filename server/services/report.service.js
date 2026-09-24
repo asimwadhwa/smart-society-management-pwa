@@ -1,562 +1,1325 @@
 const mongoose = require('mongoose');
 
-const Maintenance = require('../models/Maintenance');
-const Complaint = require('../models/Complaint');
-const LiftEmergency = require('../models/LiftEmergency');
-const User = require('../models/User');
-const Asset = require('../models/Asset');
+const Maintenance =
+  require('../models/Maintenance');
 
-/**
- * Common society filter
- *
- * societyId:
- *   null = all societies
- *   ObjectId = selected society
- */
-const buildSocietyFilter = (societyId) => {
+const Complaint =
+  require('../models/Complaint');
+
+const LiftEmergency =
+  require('../models/LiftEmergency');
+
+const User =
+  require('../models/User');
+
+const Asset =
+  require('../models/Asset');
+
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+const toObjectId = (
+  societyId
+) => {
+
   if (!societyId) {
-    return {};
+    return null;
   }
 
-  return {
-    society_id: new mongoose.Types.ObjectId(societyId),
-  };
-};
+  if (
+    societyId instanceof
+    mongoose.Types.ObjectId
+  ) {
 
-/* =========================================================
-   1. MAINTENANCE REPORT
-   ========================================================= */
+    return societyId;
 
-const getMaintenanceReport = async ({
-  societyId = null,
-  month = null,
-  year = null,
-  status = null,
-}) => {
-  const filter = buildSocietyFilter(societyId);
-
-  if (month) {
-    filter.month = Number(month);
   }
 
-  if (year) {
-    filter.year = Number(year);
-  }
-
-  if (status && status !== 'all') {
-    filter.status = status;
-  }
-
-  const records = await Maintenance.find(filter)
-    .populate('user_id', 'name email phone flat_no role')
-    .populate('society_id', 'name society_code')
-    .sort({
-      year: -1,
-      month: -1,
-      flat_no: 1,
-    })
-    .lean();
-
-  // Maintenance is normally generated only for these roles
-  const validRecords = records.filter(
-    (record) =>
-      record.user_id &&
-      ['resident', 'admin', 'manager'].includes(record.user_id.role)
+  return new mongoose.Types.ObjectId(
+    societyId
   );
 
-  let totalExpected = 0;
-  let totalCollected = 0;
-  let totalPending = 0;
-  let totalOverdue = 0;
-  let totalLateFees = 0;
+};
 
-  let paidCount = 0;
-  let pendingCount = 0;
-  let overdueCount = 0;
 
-  validRecords.forEach((record) => {
-    const amount = Number(record.amount || 0);
-    const lateFee = Number(record.late_fee || 0);
-    const totalAmount = Number(
-      record.total_amount || amount + lateFee
+const numberValue = (
+  value
+) => {
+
+  const number =
+    Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : 0;
+
+};
+
+
+// ============================================================
+// MAINTENANCE REPORT
+// ============================================================
+
+exports.getMaintenanceReport =
+  async ({
+    societyId,
+    month,
+    year,
+    status
+  }) => {
+
+    const filter = {};
+
+
+    // ----------------------------------------------------------
+    // SOCIETY
+    // ----------------------------------------------------------
+
+    if (societyId) {
+
+      filter.society_id =
+        toObjectId(
+          societyId
+        );
+
+    }
+
+
+    // ----------------------------------------------------------
+    // MONTH
+    // ----------------------------------------------------------
+
+    if (month) {
+
+      const monthNumber =
+        parseInt(
+          month,
+          10
+        );
+
+      if (
+        monthNumber >= 1 &&
+        monthNumber <= 12
+      ) {
+
+        filter.month =
+          monthNumber;
+
+      }
+
+    }
+
+
+    // ----------------------------------------------------------
+    // YEAR
+    // ----------------------------------------------------------
+
+    if (year) {
+
+      const yearNumber =
+        parseInt(
+          year,
+          10
+        );
+
+      if (
+        yearNumber >= 2000
+      ) {
+
+        filter.year =
+          yearNumber;
+
+      }
+
+    }
+
+
+    // ----------------------------------------------------------
+    // STATUS
+    // ----------------------------------------------------------
+
+    if (
+      [
+        'pending',
+        'paid',
+        'overdue'
+      ].includes(status)
+    ) {
+
+      filter.status =
+        status;
+
+    }
+
+
+    // ----------------------------------------------------------
+    // FETCH
+    // ----------------------------------------------------------
+
+    const records =
+      await Maintenance.find(
+        filter
+      )
+        .populate(
+          'user_id',
+          'name email phone flat_no role'
+        )
+        .populate(
+          'society_id',
+          'name society_code city state'
+        )
+        .sort({
+          year: -1,
+          month: -1,
+          due_date: 1
+        })
+        .lean();
+
+
+    // ----------------------------------------------------------
+    // ONLY RESIDENT / ADMIN / MANAGER
+    // ----------------------------------------------------------
+
+    const validRecords =
+      records.filter(
+        record =>
+          !record.user_id?.role ||
+          [
+            'resident',
+            'admin',
+            'manager'
+          ].includes(
+            record.user_id.role
+          )
+      );
+
+
+    // ----------------------------------------------------------
+    // SUMMARY
+    // ----------------------------------------------------------
+
+    let paid = 0;
+
+    let pending = 0;
+
+    let overdue = 0;
+
+    let totalExpected = 0;
+
+    let totalCollected = 0;
+
+    let totalPending = 0;
+
+    let totalOverdue = 0;
+
+    let totalLateFee = 0;
+
+
+    validRecords.forEach(
+      record => {
+
+        const amount =
+          numberValue(
+            record.amount
+          );
+
+        const lateFee =
+          numberValue(
+            record.late_fee
+          );
+
+        const total =
+          numberValue(
+            record.total_amount
+          ) ||
+          (
+            amount +
+            lateFee
+          );
+
+
+        totalExpected +=
+          total;
+
+
+        totalLateFee +=
+          lateFee;
+
+
+        if (
+          record.status ===
+          'paid'
+        ) {
+
+          paid += 1;
+
+          totalCollected +=
+            total;
+
+        }
+
+
+        if (
+          record.status ===
+          'pending'
+        ) {
+
+          pending += 1;
+
+          totalPending +=
+            total;
+
+        }
+
+
+        if (
+          record.status ===
+          'overdue'
+        ) {
+
+          overdue += 1;
+
+          totalOverdue +=
+            total;
+
+          totalPending +=
+            total;
+
+        }
+
+      }
     );
 
-    totalExpected += totalAmount;
-    totalLateFees += lateFee;
 
-    if (record.status === 'paid') {
-      paidCount++;
-      totalCollected += totalAmount;
-    } else if (record.status === 'overdue') {
-      overdueCount++;
-      totalOverdue += totalAmount;
-      totalPending += totalAmount;
-    } else {
-      pendingCount++;
-      totalPending += totalAmount;
+    return {
+
+      summary: {
+
+        totalRecords:
+          validRecords.length,
+
+        paid,
+
+        pending,
+
+        overdue,
+
+        totalExpected,
+
+        totalCollected,
+
+        totalPending,
+
+        totalOverdue,
+
+        totalLateFee
+
+      },
+
+      records:
+        validRecords
+
+    };
+
+  };
+
+
+// ============================================================
+// COMPLAINT REPORT
+// ============================================================
+
+exports.getComplaintReport =
+  async ({
+    societyId,
+    status
+  }) => {
+
+    const filter = {};
+
+
+    // ----------------------------------------------------------
+    // SOCIETY
+    // ----------------------------------------------------------
+
+    if (societyId) {
+
+      filter.society_id =
+        toObjectId(
+          societyId
+        );
+
     }
-  });
 
-  // Month-wise summary
-  const monthWiseMap = {};
 
-  validRecords.forEach((record) => {
-    const key = `${record.year}-${String(record.month).padStart(2, '0')}`;
+    // ----------------------------------------------------------
+    // STATUS
+    // ----------------------------------------------------------
 
-    if (!monthWiseMap[key]) {
-      monthWiseMap[key] = {
-        month: record.month,
-        year: record.year,
-        total_records: 0,
-        paid: 0,
-        pending: 0,
-        overdue: 0,
-        expected_amount: 0,
-        collected_amount: 0,
-        pending_amount: 0,
-        late_fees: 0,
-      };
+    if (
+      [
+        'open',
+        'in-progress',
+        'resolved'
+      ].includes(status)
+    ) {
+
+      filter.status =
+        status;
+
     }
 
-    const item = monthWiseMap[key];
 
-    const amount = Number(record.amount || 0);
-    const lateFee = Number(record.late_fee || 0);
-    const totalAmount = Number(
-      record.total_amount || amount + lateFee
+    // ----------------------------------------------------------
+    // FETCH
+    // ----------------------------------------------------------
+
+    const records =
+      await Complaint.find(
+        filter
+      )
+        .populate(
+          'user_id',
+          'name email phone flat_no role'
+        )
+        .populate(
+          'resolved_by',
+          'name email phone'
+        )
+        .populate(
+          'society_id',
+          'name society_code city state'
+        )
+        .sort({
+          created_at: -1
+        })
+        .lean();
+
+
+    // ----------------------------------------------------------
+    // SUMMARY
+    // ----------------------------------------------------------
+
+    let open = 0;
+
+    let inProgress = 0;
+
+    let resolved = 0;
+
+
+    records.forEach(
+      record => {
+
+        if (
+          record.status ===
+          'open'
+        ) {
+
+          open += 1;
+
+        }
+
+
+        if (
+          record.status ===
+          'in-progress'
+        ) {
+
+          inProgress += 1;
+
+        }
+
+
+        if (
+          record.status ===
+          'resolved'
+        ) {
+
+          resolved += 1;
+
+        }
+
+      }
     );
 
-    item.total_records++;
-    item.expected_amount += totalAmount;
-    item.late_fees += lateFee;
 
-    if (record.status === 'paid') {
-      item.paid++;
-      item.collected_amount += totalAmount;
-    } else if (record.status === 'overdue') {
-      item.overdue++;
-      item.pending_amount += totalAmount;
-    } else {
-      item.pending++;
-      item.pending_amount += totalAmount;
-    }
-  });
+    return {
 
-  const monthWise = Object.values(monthWiseMap).sort((a, b) => {
-    if (b.year !== a.year) {
-      return b.year - a.year;
-    }
+      summary: {
 
-    return b.month - a.month;
-  });
+        total_complaints:
+          records.length,
 
-  return {
-    summary: {
-      total_records: validRecords.length,
+        open,
 
-      paid: {
-        count: paidCount,
-        amount: totalCollected,
+        in_progress:
+          inProgress,
+
+        resolved
+
       },
 
-      pending: {
-        count: pendingCount,
-        amount: totalPending,
+      records
+
+    };
+
+  };
+
+
+// ============================================================
+// EMERGENCY REPORT
+// ============================================================
+
+exports.getEmergencyReport =
+  async ({
+    societyId,
+    status
+  }) => {
+
+    const filter = {};
+
+
+    // ----------------------------------------------------------
+    // SOCIETY
+    // ----------------------------------------------------------
+
+    if (societyId) {
+
+      filter.society_id =
+        toObjectId(
+          societyId
+        );
+
+    }
+
+
+    // ----------------------------------------------------------
+    // STATUS
+    // ----------------------------------------------------------
+
+    if (
+      [
+        'active',
+        'resolved'
+      ].includes(status)
+    ) {
+
+      filter.status =
+        status;
+
+    }
+
+
+    // ----------------------------------------------------------
+    // FETCH
+    // ----------------------------------------------------------
+
+    const records =
+      await LiftEmergency.find(
+        filter
+      )
+        .populate(
+          'triggered_by',
+          'name email phone flat_no role'
+        )
+        .populate(
+          'resolved_by',
+          'name email phone role'
+        )
+        .populate(
+          'society_id',
+          'name society_code city state'
+        )
+        .sort({
+          triggered_at: -1
+        })
+        .lean();
+
+
+    // ----------------------------------------------------------
+    // SUMMARY
+    // ----------------------------------------------------------
+
+    let active = 0;
+
+    let resolved = 0;
+
+
+    records.forEach(
+      record => {
+
+        if (
+          record.status ===
+          'active'
+        ) {
+
+          active += 1;
+
+        }
+
+
+        if (
+          record.status ===
+          'resolved'
+        ) {
+
+          resolved += 1;
+
+        }
+
+      }
+    );
+
+
+    return {
+
+      summary: {
+
+        total_emergencies:
+          records.length,
+
+        active,
+
+        resolved
+
       },
 
-      overdue: {
-        count: overdueCount,
-        amount: totalOverdue,
+      records
+
+    };
+
+  };
+
+
+// ============================================================
+// USERS / RESIDENTS REPORT
+// ============================================================
+
+exports.getUsersReport =
+  async ({
+    societyId,
+    role,
+    is_active
+  }) => {
+
+    const filter = {};
+
+
+    // ----------------------------------------------------------
+    // SOCIETY
+    // ----------------------------------------------------------
+
+    if (societyId) {
+
+      filter.society_id =
+        toObjectId(
+          societyId
+        );
+
+    }
+
+
+    // ----------------------------------------------------------
+    // ROLE
+    // ----------------------------------------------------------
+
+    if (
+      [
+        'resident',
+        'manager',
+        'admin',
+        'watchman'
+      ].includes(role)
+    ) {
+
+      filter.role =
+        role;
+
+    }
+
+
+    // ----------------------------------------------------------
+    // ACTIVE / INACTIVE
+    // ----------------------------------------------------------
+
+    if (
+      is_active === 'true'
+    ) {
+
+      filter.is_active =
+        true;
+
+    }
+
+
+    if (
+      is_active === 'false'
+    ) {
+
+      filter.is_active =
+        false;
+
+    }
+
+
+    // ----------------------------------------------------------
+    // NEVER SHOW SUPER ADMIN
+    // ----------------------------------------------------------
+
+    filter.role = filter.role
+      ? filter.role
+      : {
+          $in: [
+            'resident',
+            'manager',
+            'admin',
+            'watchman'
+          ]
+        };
+
+
+    // ----------------------------------------------------------
+    // FETCH
+    // ----------------------------------------------------------
+
+    const records =
+      await User.find(
+        filter
+      )
+        .select(
+          'name email phone flat_no role is_active is_verified society_id created_at updated_at'
+        )
+        .populate(
+          'society_id',
+          'name society_code city state'
+        )
+        .sort({
+          role: 1,
+          flat_no: 1,
+          name: 1
+        })
+        .lean();
+
+
+    // ----------------------------------------------------------
+    // SUMMARY
+    // ----------------------------------------------------------
+
+    let residents = 0;
+
+    let managers = 0;
+
+    let admins = 0;
+
+    let watchmen = 0;
+
+    let active = 0;
+
+    let inactive = 0;
+
+
+    records.forEach(
+      user => {
+
+        switch (
+          user.role
+        ) {
+
+          case 'resident':
+            residents += 1;
+            break;
+
+          case 'manager':
+            managers += 1;
+            break;
+
+          case 'admin':
+            admins += 1;
+            break;
+
+          case 'watchman':
+            watchmen += 1;
+            break;
+
+          default:
+            break;
+
+        }
+
+
+        if (
+          user.is_active
+        ) {
+
+          active += 1;
+
+        } else {
+
+          inactive += 1;
+
+        }
+
+      }
+    );
+
+
+    // ----------------------------------------------------------
+    // SOCIETY-WISE SUMMARY
+    // ----------------------------------------------------------
+
+    const societyMap =
+      new Map();
+
+
+    records.forEach(
+      user => {
+
+        const society =
+          user.society_id;
+
+
+        const id =
+          society?._id
+            ? String(
+                society._id
+              )
+            : 'unknown';
+
+
+        if (
+          !societyMap.has(id)
+        ) {
+
+          societyMap.set(
+            id,
+            {
+              society_id:
+                society?._id ||
+                null,
+
+              society_name:
+                society?.name ||
+                'Unknown Society',
+
+              society_code:
+                society?.society_code ||
+                '',
+
+              total_users: 0,
+
+              residents: 0,
+
+              managers: 0,
+
+              admins: 0,
+
+              watchmen: 0,
+
+              active: 0,
+
+              inactive: 0
+            }
+          );
+
+        }
+
+
+        const item =
+          societyMap.get(id);
+
+
+        item.total_users +=
+          1;
+
+
+        if (
+          user.role ===
+          'resident'
+        ) {
+
+          item.residents +=
+            1;
+
+        }
+
+
+        if (
+          user.role ===
+          'manager'
+        ) {
+
+          item.managers +=
+            1;
+
+        }
+
+
+        if (
+          user.role ===
+          'admin'
+        ) {
+
+          item.admins +=
+            1;
+
+        }
+
+
+        if (
+          user.role ===
+          'watchman'
+        ) {
+
+          item.watchmen +=
+            1;
+
+        }
+
+
+        if (
+          user.is_active
+        ) {
+
+          item.active +=
+            1;
+
+        } else {
+
+          item.inactive +=
+            1;
+
+        }
+
+      }
+    );
+
+
+    return {
+
+      summary: {
+
+        total_users:
+          records.length,
+
+        residents,
+
+        managers,
+
+        admins,
+
+        watchmen,
+
+        active,
+
+        inactive
+
       },
 
-      total_expected: totalExpected,
-      total_collected: totalCollected,
-      total_pending: totalPending,
-      total_late_fees: totalLateFees,
-    },
+      society_wise:
+        Array.from(
+          societyMap.values()
+        ),
 
-    month_wise: monthWise,
+      records
 
-    records: validRecords,
-  };
-};
+    };
 
-/* =========================================================
-   2. COMPLAINT REPORT
-   ========================================================= */
-
-const getComplaintReport = async ({
-  societyId = null,
-  status = null,
-}) => {
-  const filter = buildSocietyFilter(societyId);
-
-  if (status && status !== 'all') {
-    filter.status = status;
-  }
-
-  const records = await Complaint.find(filter)
-    .populate(
-      'user_id',
-      'name email phone flat_no role'
-    )
-    .populate(
-      'resolved_by',
-      'name email role'
-    )
-    .populate(
-      'society_id',
-      'name society_code'
-    )
-    .sort({
-      created_at: -1,
-    })
-    .lean();
-
-  let openCount = 0;
-  let inProgressCount = 0;
-  let resolvedCount = 0;
-
-  records.forEach((record) => {
-    if (record.status === 'open') {
-      openCount++;
-    } else if (record.status === 'in-progress') {
-      inProgressCount++;
-    } else if (record.status === 'resolved') {
-      resolvedCount++;
-    }
-  });
-
-  // Resident-wise complaint summary
-  const residentMap = {};
-
-  records.forEach((record) => {
-    const user = record.user_id;
-
-    if (!user) {
-      return;
-    }
-
-    const userId = user._id.toString();
-
-    if (!residentMap[userId]) {
-      residentMap[userId] = {
-        user_id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        flat_no: user.flat_no,
-        total_complaints: 0,
-        open: 0,
-        in_progress: 0,
-        resolved: 0,
-      };
-    }
-
-    const item = residentMap[userId];
-
-    item.total_complaints++;
-
-    if (record.status === 'open') {
-      item.open++;
-    } else if (record.status === 'in-progress') {
-      item.in_progress++;
-    } else if (record.status === 'resolved') {
-      item.resolved++;
-    }
-  });
-
-  return {
-    summary: {
-      total_complaints: records.length,
-      open: openCount,
-      in_progress: inProgressCount,
-      resolved: resolvedCount,
-    },
-
-    resident_wise: Object.values(residentMap).sort(
-      (a, b) => b.total_complaints - a.total_complaints
-    ),
-
-    records,
-  };
-};
-
-/* =========================================================
-   3. EMERGENCY REPORT
-   ========================================================= */
-
-const getEmergencyReport = async ({
-  societyId = null,
-  status = null,
-}) => {
-  const filter = buildSocietyFilter(societyId);
-
-  if (status && status !== 'all') {
-    filter.status = status;
-  }
-
-  const records = await LiftEmergency.find(filter)
-    .populate(
-      'triggered_by',
-      'name email phone flat_no role'
-    )
-    .populate(
-      'resolved_by',
-      'name email role'
-    )
-    .populate(
-      'society_id',
-      'name society_code'
-    )
-    .sort({
-      triggered_at: -1,
-    })
-    .lean();
-
-  let activeCount = 0;
-  let resolvedCount = 0;
-
-  records.forEach((record) => {
-    if (record.status === 'active') {
-      activeCount++;
-    } else if (record.status === 'resolved') {
-      resolvedCount++;
-    }
-  });
-
-  return {
-    summary: {
-      total_emergencies: records.length,
-      active: activeCount,
-      resolved: resolvedCount,
-    },
-
-    records,
-  };
-};
-
-/* =========================================================
-   4. USERS / RESIDENTS REPORT
-   ========================================================= */
-
-const getUsersReport = async ({
-  societyId = null,
-  role = null,
-  isActive = null,
-}) => {
-  const filter = buildSocietyFilter(societyId);
-
-  if (role && role !== 'all') {
-    filter.role = role;
-  }
-
-  if (isActive !== null && isActive !== undefined && isActive !== '') {
-    filter.is_active =
-      isActive === true ||
-      isActive === 'true';
-  }
-
-  // Super admin itself is not a society resident.
-  // For society reports, exclude super_admin.
-  filter.role = filter.role || {
-    $in: ['resident', 'manager', 'admin', 'watchman'],
   };
 
-  const records = await User.find(filter)
-    .populate(
-      'society_id',
-      'name society_code'
-    )
-    .select(
-      'name email phone flat_no role is_active is_verified society_id created_at updated_at'
-    )
-    .sort({
-      role: 1,
-      flat_no: 1,
-      name: 1,
-    })
-    .lean();
 
-  let residents = 0;
-  let managers = 0;
-  let admins = 0;
-  let watchmen = 0;
-  let active = 0;
-  let inactive = 0;
+// ============================================================
+// ASSETS REPORT
+// ============================================================
 
-  records.forEach((user) => {
-    if (user.role === 'resident') {
-      residents++;
-    } else if (user.role === 'manager') {
-      managers++;
-    } else if (user.role === 'admin') {
-      admins++;
-    } else if (user.role === 'watchman') {
-      watchmen++;
+exports.getAssetsReport =
+  async ({
+    societyId,
+    type,
+    status
+  }) => {
+
+    const filter = {};
+
+
+    // ----------------------------------------------------------
+    // SOCIETY
+    // ----------------------------------------------------------
+
+    if (societyId) {
+
+      filter.society_id =
+        toObjectId(
+          societyId
+        );
+
     }
 
-    if (user.is_active) {
-      active++;
-    } else {
-      inactive++;
-    }
-  });
 
-  // Society-wise user summary
-  const societyMap = {};
+    // ----------------------------------------------------------
+    // TYPE
+    // ----------------------------------------------------------
 
-  records.forEach((user) => {
-    const society = user.society_id;
+    if (
+      [
+        'lift',
+        'water_pump',
+        'generator'
+      ].includes(type)
+    ) {
 
-    if (!society) {
-      return;
-    }
+      filter.type =
+        type;
 
-    const societyIdKey = society._id.toString();
-
-    if (!societyMap[societyIdKey]) {
-      societyMap[societyIdKey] = {
-        society_id: society._id,
-        society_name: society.name,
-        society_code: society.society_code,
-        total_users: 0,
-        residents: 0,
-        managers: 0,
-        admins: 0,
-        watchmen: 0,
-        active: 0,
-        inactive: 0,
-      };
     }
 
-    const item = societyMap[societyIdKey];
 
-    item.total_users++;
+    // ----------------------------------------------------------
+    // STATUS
+    // ----------------------------------------------------------
 
-    if (user.role === 'resident') {
-      item.residents++;
-    } else if (user.role === 'manager') {
-      item.managers++;
-    } else if (user.role === 'admin') {
-      item.admins++;
-    } else if (user.role === 'watchman') {
-      item.watchmen++;
+    if (
+      [
+        'working',
+        'under_maintenance',
+        'not_working'
+      ].includes(status)
+    ) {
+
+      filter.status =
+        status;
+
     }
 
-    if (user.is_active) {
-      item.active++;
-    } else {
-      item.inactive++;
-    }
-  });
 
-  return {
-    summary: {
-      total_users: records.length,
-      residents,
-      managers,
-      admins,
-      watchmen,
-      active,
-      inactive,
-    },
+    // ----------------------------------------------------------
+    // FETCH
+    // ----------------------------------------------------------
 
-    society_wise: Object.values(societyMap),
+    let query =
+      Asset.find(
+        filter
+      )
+        .populate(
+          'society_id',
+          'name society_code city state'
+        )
+        .sort({
+          type: 1,
+          name: 1
+        });
 
-    records,
-  };
-};
 
-/* =========================================================
-   5. ASSETS REPORT
-   ========================================================= */
+    // ----------------------------------------------------------
+    // TRY POPULATING SERVICE USERS
+    // ----------------------------------------------------------
 
-const getAssetsReport = async ({
-  societyId = null,
-  type = null,
-  status = null,
-}) => {
-  const filter = buildSocietyFilter(societyId);
+    try {
 
-  if (type && type !== 'all') {
-    filter.type = type;
-  }
+      query =
+        query.populate(
+          'services.done_by',
+          'name email role'
+        );
 
-  if (status && status !== 'all') {
-    filter.status = status;
-  }
+    } catch (error) {
 
-  const records = await Asset.find(filter)
-    .populate(
-      'society_id',
-      'name society_code'
-    )
-    .populate(
-      'services.done_by',
-      'name email role'
-    )
-    .sort({
-      type: 1,
-      name: 1,
-    })
-    .lean();
+      console.warn(
+        'Service user population skipped:',
+        error.message
+      );
 
-  let lift = 0;
-  let waterPump = 0;
-  let generator = 0;
-
-  let working = 0;
-  let underMaintenance = 0;
-  let notWorking = 0;
-
-  records.forEach((asset) => {
-    if (asset.type === 'lift') {
-      lift++;
-    } else if (asset.type === 'water_pump') {
-      waterPump++;
-    } else if (asset.type === 'generator') {
-      generator++;
     }
 
-    if (asset.status === 'working') {
-      working++;
-    } else if (asset.status === 'under_maintenance') {
-      underMaintenance++;
-    } else if (asset.status === 'not_working') {
-      notWorking++;
-    }
-  });
 
-  return {
-    summary: {
-      total_assets: records.length,
+    const records =
+      await query.lean();
 
-      by_type: {
-        lift,
-        water_pump: waterPump,
-        generator,
-      },
 
-      by_status: {
+    // ----------------------------------------------------------
+    // SUMMARY
+    // ----------------------------------------------------------
+
+    let working = 0;
+
+    let underMaintenance = 0;
+
+    let notWorking = 0;
+
+    let lifts = 0;
+
+    let waterPumps = 0;
+
+    let generators = 0;
+
+
+    records.forEach(
+      asset => {
+
+        // STATUS
+
+        if (
+          asset.status ===
+          'working'
+        ) {
+
+          working += 1;
+
+        }
+
+
+        if (
+          asset.status ===
+          'under_maintenance'
+        ) {
+
+          underMaintenance +=
+            1;
+
+        }
+
+
+        if (
+          asset.status ===
+          'not_working'
+        ) {
+
+          notWorking += 1;
+
+        }
+
+
+        // TYPE
+
+        if (
+          asset.type ===
+          'lift'
+        ) {
+
+          lifts += 1;
+
+        }
+
+
+        if (
+          asset.type ===
+          'water_pump'
+        ) {
+
+          waterPumps +=
+            1;
+
+        }
+
+
+        if (
+          asset.type ===
+          'generator'
+        ) {
+
+          generators +=
+            1;
+
+        }
+
+      }
+    );
+
+
+    // ----------------------------------------------------------
+    // SOCIETY-WISE ASSET SUMMARY
+    // ----------------------------------------------------------
+
+    const societyMap =
+      new Map();
+
+
+    records.forEach(
+      asset => {
+
+        const society =
+          asset.society_id;
+
+
+        const id =
+          society?._id
+            ? String(
+                society._id
+              )
+            : 'unknown';
+
+
+        if (
+          !societyMap.has(id)
+        ) {
+
+          societyMap.set(
+            id,
+            {
+              society_id:
+                society?._id ||
+                null,
+
+              society_name:
+                society?.name ||
+                'Unknown Society',
+
+              society_code:
+                society?.society_code ||
+                '',
+
+              total_assets: 0,
+
+              lifts: 0,
+
+              water_pumps: 0,
+
+              generators: 0,
+
+              working: 0,
+
+              under_maintenance: 0,
+
+              not_working: 0
+            }
+          );
+
+        }
+
+
+        const item =
+          societyMap.get(id);
+
+
+        item.total_assets +=
+          1;
+
+
+        if (
+          asset.type ===
+          'lift'
+        ) {
+
+          item.lifts +=
+            1;
+
+        }
+
+
+        if (
+          asset.type ===
+          'water_pump'
+        ) {
+
+          item.water_pumps +=
+            1;
+
+        }
+
+
+        if (
+          asset.type ===
+          'generator'
+        ) {
+
+          item.generators +=
+            1;
+
+        }
+
+
+        if (
+          asset.status ===
+          'working'
+        ) {
+
+          item.working +=
+            1;
+
+        }
+
+
+        if (
+          asset.status ===
+          'under_maintenance'
+        ) {
+
+          item.under_maintenance +=
+            1;
+
+        }
+
+
+        if (
+          asset.status ===
+          'not_working'
+        ) {
+
+          item.not_working +=
+            1;
+
+        }
+
+      }
+    );
+
+
+    return {
+
+      summary: {
+
+        total_assets:
+          records.length,
+
         working,
-        under_maintenance: underMaintenance,
-        not_working: notWorking,
+
+        under_maintenance:
+          underMaintenance,
+
+        not_working:
+          notWorking,
+
+        lifts,
+
+        water_pumps:
+          waterPumps,
+
+        generators,
+
+        by_status: {
+
+          working,
+
+          under_maintenance:
+            underMaintenance,
+
+          not_working:
+            notWorking
+
+        },
+
+        by_type: {
+
+          lift:
+            lifts,
+
+          water_pump:
+            waterPumps,
+
+          generator:
+            generators
+
+        }
+
       },
-    },
 
-    records,
+      society_wise:
+        Array.from(
+          societyMap.values()
+        ),
+
+      records
+
+    };
+
   };
-};
-
-/* =========================================================
-   EXPORTS
-   ========================================================= */
-
-module.exports = {
-  getMaintenanceReport,
-  getComplaintReport,
-  getEmergencyReport,
-  getUsersReport,
-  getAssetsReport,
-};

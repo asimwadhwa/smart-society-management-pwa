@@ -1,331 +1,488 @@
 const mongoose = require('mongoose');
 
-const {
-  getMaintenanceReport,
-  getComplaintReport,
-  getEmergencyReport,
-  getUsersReport,
-  getAssetsReport,
-} = require('../services/report.service');
+const reportService =
+  require('../services/report.service');
 
-/* =========================================================
-   COMMON HELPERS
-   ========================================================= */
+
+// ============================================================
+// HELPERS
+// ============================================================
 
 const isSuperAdmin = (req) => {
   return req.user?.role === 'super_admin';
 };
 
+
 const isManagerOrAdmin = (req) => {
-  return ['manager', 'admin'].includes(req.user?.role);
+  return [
+    'manager',
+    'admin'
+  ].includes(
+    req.user?.role
+  );
 };
 
-const getUserSocietyId = (req) => {
+
+const getOwnSocietyId = (req) => {
   return req.user?.society_id || null;
 };
 
-/**
- * Gets the society that the report is allowed to access.
- *
- * Super Admin:
- *   - society_id provided -> selected society
- *   - society_id missing   -> all societies
- *
- * Manager/Admin:
- *   - ALWAYS own society
- *   - frontend cannot override this
- */
-const getReportSocietyId = (req) => {
+
+const isValidObjectId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
+
+
+// ============================================================
+// GET EFFECTIVE SOCIETY
+// ============================================================
+//
+// SUPER ADMIN
+// -> society_id supplied = selected society
+// -> no society_id = all societies
+//
+// MANAGER / ADMIN
+// -> ALWAYS own society
+// -> frontend cannot override it
+//
+// ============================================================
+
+const getEffectiveSocietyId = (
+  req,
+  requestedSocietyId
+) => {
+
   if (isSuperAdmin(req)) {
-    const societyId = req.query.society_id;
 
-    if (!societyId || societyId === 'all') {
-      return null;
+    if (
+      requestedSocietyId &&
+      requestedSocietyId !== 'all'
+    ) {
+
+      if (
+        !isValidObjectId(
+          requestedSocietyId
+        )
+      ) {
+
+        const error =
+          new Error(
+            'Invalid society ID'
+          );
+
+        error.statusCode = 400;
+
+        throw error;
+      }
+
+      return requestedSocietyId;
     }
 
-    if (!mongoose.Types.ObjectId.isValid(societyId)) {
-      const error = new Error('Invalid society_id');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    return societyId;
+    return null;
   }
 
-  if (isManagerOrAdmin(req)) {
-    const societyId = getUserSocietyId(req);
 
-    if (!societyId) {
-      const error = new Error(
+  const ownSocietyId =
+    getOwnSocietyId(req);
+
+
+  if (!ownSocietyId) {
+
+    const error =
+      new Error(
         'User is not assigned to any society'
       );
 
-      error.statusCode = 403;
-      throw error;
+    error.statusCode = 400;
+
+    throw error;
+  }
+
+
+  return ownSocietyId;
+};
+
+
+// ============================================================
+// COMMON SUCCESS RESPONSE
+// ============================================================
+
+const sendReportResponse = (
+  req,
+  res,
+  data,
+  societyId
+) => {
+
+  return res.status(200).json({
+
+    success: true,
+
+    data: {
+
+      ...data,
+
+      society_id:
+        societyId || null,
+
+      all_societies:
+        isSuperAdmin(req) &&
+        !societyId
+
     }
 
-    return societyId.toString();
-  }
+  });
 
-  const error = new Error(
-    'You are not authorized to access reports'
-  );
-
-  error.statusCode = 403;
-  throw error;
 };
 
-/**
- * Common response metadata.
- */
-const getReportMeta = (req, societyId) => {
-  return {
-    society_id: societyId,
-    all_societies:
-      isSuperAdmin(req) && !societyId,
+
+// ============================================================
+// MAINTENANCE REPORT
+// ============================================================
+
+exports.getMaintenanceReport =
+  async (
+    req,
+    res,
+    next
+  ) => {
+
+    try {
+
+      const {
+        society_id,
+        month,
+        year,
+        status
+      } = req.query;
+
+
+      const effectiveSocietyId =
+        getEffectiveSocietyId(
+          req,
+          society_id
+        );
+
+
+      const report =
+        await reportService.getMaintenanceReport({
+
+          societyId:
+            effectiveSocietyId,
+
+          month,
+
+          year,
+
+          status
+
+        });
+
+
+      return sendReportResponse(
+        req,
+        res,
+        report,
+        effectiveSocietyId
+      );
+
+    } catch (error) {
+
+      console.error(
+        'Maintenance report error:',
+        error
+      );
+
+      return res.status(
+        error.statusCode || 500
+      ).json({
+
+        success: false,
+
+        message:
+          error.message ||
+          'Failed to generate maintenance report.'
+
+      });
+
+    }
+
   };
-};
 
-/* =========================================================
-   1. MAINTENANCE REPORT
-   ========================================================= */
 
-const getMaintenanceReportController = async (req, res) => {
-  try {
-    const societyId = getReportSocietyId(req);
+// ============================================================
+// COMPLAINT REPORT
+// ============================================================
 
-    const {
-      month,
-      year,
-      status,
-    } = req.query;
+exports.getComplaintReport =
+  async (
+    req,
+    res,
+    next
+  ) => {
 
-    const report = await getMaintenanceReport({
-      societyId,
-      month,
-      year,
-      status,
-    });
+    try {
 
-    return res.status(200).json({
-      success: true,
+      const {
+        society_id,
+        status
+      } = req.query;
 
-      data: {
-        ...report,
 
-        ...getReportMeta(req, societyId),
-      },
-    });
-  } catch (error) {
-    console.error(
-      'Maintenance report error:',
-      error
-    );
+      const effectiveSocietyId =
+        getEffectiveSocietyId(
+          req,
+          society_id
+        );
 
-    return res.status(
-      error.statusCode || 500
-    ).json({
-      success: false,
-      message:
-        error.message ||
-        'Failed to generate maintenance report',
-    });
-  }
-};
 
-/* =========================================================
-   2. COMPLAINT REPORT
-   ========================================================= */
+      const report =
+        await reportService.getComplaintReport({
 
-const getComplaintReportController = async (req, res) => {
-  try {
-    const societyId = getReportSocietyId(req);
+          societyId:
+            effectiveSocietyId,
 
-    const {
-      status,
-    } = req.query;
+          status
 
-    const report = await getComplaintReport({
-      societyId,
-      status,
-    });
+        });
 
-    return res.status(200).json({
-      success: true,
 
-      data: {
-        ...report,
+      return sendReportResponse(
+        req,
+        res,
+        report,
+        effectiveSocietyId
+      );
 
-        ...getReportMeta(req, societyId),
-      },
-    });
-  } catch (error) {
-    console.error(
-      'Complaint report error:',
-      error
-    );
+    } catch (error) {
 
-    return res.status(
-      error.statusCode || 500
-    ).json({
-      success: false,
-      message:
-        error.message ||
-        'Failed to generate complaint report',
-    });
-  }
-};
+      console.error(
+        'Complaint report error:',
+        error
+      );
 
-/* =========================================================
-   3. EMERGENCY REPORT
-   ========================================================= */
+      return res.status(
+        error.statusCode || 500
+      ).json({
 
-const getEmergencyReportController = async (req, res) => {
-  try {
-    const societyId = getReportSocietyId(req);
+        success: false,
 
-    const {
-      status,
-    } = req.query;
+        message:
+          error.message ||
+          'Failed to generate complaint report.'
 
-    const report = await getEmergencyReport({
-      societyId,
-      status,
-    });
+      });
 
-    return res.status(200).json({
-      success: true,
+    }
 
-      data: {
-        ...report,
+  };
 
-        ...getReportMeta(req, societyId),
-      },
-    });
-  } catch (error) {
-    console.error(
-      'Emergency report error:',
-      error
-    );
 
-    return res.status(
-      error.statusCode || 500
-    ).json({
-      success: false,
-      message:
-        error.message ||
-        'Failed to generate emergency report',
-    });
-  }
-};
+// ============================================================
+// EMERGENCY REPORT
+// ============================================================
 
-/* =========================================================
-   4. USERS / RESIDENTS REPORT
-   ========================================================= */
+exports.getEmergencyReport =
+  async (
+    req,
+    res,
+    next
+  ) => {
 
-const getUsersReportController = async (req, res) => {
-  try {
-    const societyId = getReportSocietyId(req);
+    try {
 
-    const {
-      role,
-      is_active,
-    } = req.query;
+      const {
+        society_id,
+        status
+      } = req.query;
 
-    const report = await getUsersReport({
-      societyId,
-      role,
-      isActive: is_active,
-    });
 
-    return res.status(200).json({
-      success: true,
+      const effectiveSocietyId =
+        getEffectiveSocietyId(
+          req,
+          society_id
+        );
 
-      data: {
-        ...report,
 
-        ...getReportMeta(req, societyId),
-      },
-    });
-  } catch (error) {
-    console.error(
-      'Users report error:',
-      error
-    );
+      const report =
+        await reportService.getEmergencyReport({
 
-    return res.status(
-      error.statusCode || 500
-    ).json({
-      success: false,
-      message:
-        error.message ||
-        'Failed to generate users report',
-    });
-  }
-};
+          societyId:
+            effectiveSocietyId,
 
-/* =========================================================
-   5. ASSETS REPORT
-   ========================================================= */
+          status
 
-const getAssetsReportController = async (req, res) => {
-  try {
-    const societyId = getReportSocietyId(req);
+        });
 
-    const {
-      type,
-      status,
-    } = req.query;
 
-    const report = await getAssetsReport({
-      societyId,
-      type,
-      status,
-    });
+      return sendReportResponse(
+        req,
+        res,
+        report,
+        effectiveSocietyId
+      );
 
-    return res.status(200).json({
-      success: true,
+    } catch (error) {
 
-      data: {
-        ...report,
+      console.error(
+        'Emergency report error:',
+        error
+      );
 
-        ...getReportMeta(req, societyId),
-      },
-    });
-  } catch (error) {
-    console.error(
-      'Assets report error:',
-      error
-    );
+      return res.status(
+        error.statusCode || 500
+      ).json({
 
-    return res.status(
-      error.statusCode || 500
-    ).json({
-      success: false,
-      message:
-        error.message ||
-        'Failed to generate assets report',
-    });
-  }
-};
+        success: false,
 
-/* =========================================================
-   EXPORTS
-   ========================================================= */
+        message:
+          error.message ||
+          'Failed to generate emergency report.'
 
-module.exports = {
-  getMaintenanceReport:
-    getMaintenanceReportController,
+      });
 
-  getComplaintReport:
-    getComplaintReportController,
+    }
 
-  getEmergencyReport:
-    getEmergencyReportController,
+  };
 
-  getUsersReport:
-    getUsersReportController,
 
-  getAssetsReport:
-    getAssetsReportController,
-};
+// ============================================================
+// USERS REPORT
+// ============================================================
+
+exports.getUsersReport =
+  async (
+    req,
+    res,
+    next
+  ) => {
+
+    try {
+
+      const {
+        society_id,
+        role,
+        is_active
+      } = req.query;
+
+
+      const effectiveSocietyId =
+        getEffectiveSocietyId(
+          req,
+          society_id
+        );
+
+
+      const report =
+        await reportService.getUsersReport({
+
+          societyId:
+            effectiveSocietyId,
+
+          role,
+
+          is_active
+
+        });
+
+
+      return sendReportResponse(
+        req,
+        res,
+        report,
+        effectiveSocietyId
+      );
+
+    } catch (error) {
+
+      console.error(
+        'Users report error:',
+        error
+      );
+
+      return res.status(
+        error.statusCode || 500
+      ).json({
+
+        success: false,
+
+        message:
+          error.message ||
+          'Failed to generate users report.'
+
+      });
+
+    }
+
+  };
+
+
+// ============================================================
+// ASSETS REPORT
+// ============================================================
+
+exports.getAssetsReport =
+  async (
+    req,
+    res,
+    next
+  ) => {
+
+    try {
+
+      const {
+        society_id,
+        type,
+        status
+      } = req.query;
+
+
+      const effectiveSocietyId =
+        getEffectiveSocietyId(
+          req,
+          society_id
+        );
+
+
+      const report =
+        await reportService.getAssetsReport({
+
+          societyId:
+            effectiveSocietyId,
+
+          type,
+
+          status
+
+        });
+
+
+      return sendReportResponse(
+        req,
+        res,
+        report,
+        effectiveSocietyId
+      );
+
+    } catch (error) {
+
+      console.error(
+        'Assets report error:',
+        error
+      );
+
+      return res.status(
+        error.statusCode || 500
+      ).json({
+
+        success: false,
+
+        message:
+          error.message ||
+          'Failed to generate assets report.'
+
+      });
+
+    }
+
+  };
