@@ -1,3 +1,4 @@
+
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -36,6 +37,7 @@ const UserSchema = new mongoose.Schema(
     // Super Admin -> society_id = null
     // Manager/Admin/Resident/Watchman -> society_id required
     // ========================================================
+
     society_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Society',
@@ -160,5 +162,9 @@ UserSchema.methods.toJSON = function () {
 
   return obj;
 };
+
+// ============================================================
+// EXPORT MODEL
+// ============================================================
 
 module.exports = mongoose.model('User', UserSchema);

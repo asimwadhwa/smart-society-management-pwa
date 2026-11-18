@@ -1,3 +1,4 @@
+
 const express = require('express');
 
 const router = express.Router();
@@ -12,30 +13,48 @@ const {
 
 
 // ============================================================
-// PUBLIC AVAILABLE FLATS
+// AUTHENTICATION
+// ============================================================
+
+// All routes below require login.
+
+router.use(authenticate);
+
+
+// ============================================================
+// AVAILABLE FLATS
 // ============================================================
 //
-// Used by Registration Page.
+// Manager only
 //
-// Example:
-// GET /api/users/flats/available?society_code=ABC123
+// GET /api/users/flats/available
 //
-// IMPORTANT:
-// This route MUST be before router.use(authenticate)
-// because registration user is not logged in yet.
+// Manager can see available flats of own society only.
 // ============================================================
 
 router.get(
   '/flats/available',
+  authorize('manager'),
   userController.getAvailableFlats
 );
 
 
 // ============================================================
-// AUTHENTICATION
+// CREATE RESIDENT
+// ============================================================
+//
+// Manager only
+//
+// POST /api/users/resident
+//
+// Manager can create residents only in own society.
 // ============================================================
 
-router.use(authenticate);
+router.post(
+  '/resident',
+  authorize('manager'),
+  userController.createResident
+);
 
 
 // ============================================================
@@ -112,15 +131,6 @@ router.get(
 // ============================================================
 // ROLE MANAGEMENT
 // ============================================================
-//
-// Manager/Admin:
-//   Resident <-> Admin
-//
-// Super Admin:
-//   Resident <-> Admin
-//
-// Manager role is handled separately.
-// ============================================================
 
 router.put(
   '/:id/role',
@@ -150,13 +160,6 @@ router.post(
 // ============================================================
 // DEACTIVATE USER
 // ============================================================
-//
-// Manager/Admin:
-//   Own society
-//
-// Super Admin:
-//   Any society
-// ============================================================
 
 router.delete(
   '/:id',
@@ -171,13 +174,6 @@ router.delete(
 
 // ============================================================
 // ACTIVATE USER
-// ============================================================
-//
-// Manager/Admin:
-//   Own society
-//
-// Super Admin:
-//   Any society
 // ============================================================
 
 router.put(

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -116,9 +117,11 @@ export default function LoginPage() {
       !cleanEmail ||
       !cleanPassword
     ) {
+
       setError(
         'Please enter email and password.'
       );
+
       return;
     }
 
@@ -132,9 +135,11 @@ export default function LoginPage() {
     if (
       !emailRegex.test(cleanEmail)
     ) {
+
       setError(
         'Please enter a valid email address.'
       );
+
       return;
     }
 
@@ -145,9 +150,11 @@ export default function LoginPage() {
     if (
       !cleanPassword.trim()
     ) {
+
       setError(
         'Password cannot be empty or contain only spaces.'
       );
+
       return;
     }
 
@@ -171,15 +178,20 @@ export default function LoginPage() {
         password: string;
         society_code?: string;
       } = {
+
         email:
           cleanEmail.toLowerCase(),
+
         password:
           cleanPassword
+
       };
 
       if (cleanSocietyCode) {
+
         loginData.society_code =
           cleanSocietyCode;
+
       }
 
       const result =
@@ -191,26 +203,23 @@ export default function LoginPage() {
 
       if (result.success) {
 
-        if (
-          result.user?.role ===
-          'watchman'
-        ) {
+  if (result.user?.role === 'watchman') {
 
-          router.push(
-            '/watchman'
-          );
+    window.location.href = '/watchman';
 
-        } else {
+  } else {
 
-          router.push('/');
-        }
+    window.location.href = '/';
 
-      } else {
+  }
+
+} else {
 
         setError(
           result.message ||
           'Invalid login details.'
         );
+
       }
 
     } catch (_err) {
@@ -222,7 +231,9 @@ export default function LoginPage() {
     } finally {
 
       setLoading(false);
+
     }
+
   };
 
   // ============================================================
@@ -232,6 +243,7 @@ export default function LoginPage() {
   if (authLoading) {
 
     return (
+
       <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
 
         <CardContent className="py-12">
@@ -249,7 +261,9 @@ export default function LoginPage() {
         </CardContent>
 
       </Card>
+
     );
+
   }
 
   // ============================================================
@@ -273,15 +287,11 @@ export default function LoginPage() {
         </div>
 
         <CardTitle className="text-2xl font-bold text-center text-slate-900">
-
           Welcome back
-
         </CardTitle>
 
         <CardDescription className="text-center text-slate-500">
-
           Sign in to your society account
-
         </CardDescription>
 
       </CardHeader>
@@ -452,56 +462,33 @@ export default function LoginPage() {
             {loading ? (
 
               <>
+
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+
                 Signing in...
+
               </>
 
             ) : (
 
               <>
+
                 Sign In
+
                 <ArrowRight className="w-4 h-4 ml-2" />
+
               </>
 
             )}
 
           </Button>
 
-          <div className="relative w-full">
-
-            <div className="absolute inset-0 flex items-center">
-
-              <div className="w-full border-t border-slate-200"></div>
-
-            </div>
-
-            <div className="relative flex justify-center text-sm">
-
-              <span className="px-2 bg-white text-slate-500">
-                or
-              </span>
-
-            </div>
-
-          </div>
-
-          <p className="text-sm text-center text-slate-600">
-
-            Don&apos;t have an account?{' '}
-
-            <Link
-              href="/register"
-              className="text-blue-600 font-semibold hover:text-blue-700"
-            >
-              Create account
-            </Link>
-
-          </p>
-
         </CardFooter>
 
       </form>
 
     </Card>
+
   );
+
 }

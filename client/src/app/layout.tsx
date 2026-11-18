@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
@@ -11,11 +12,11 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Asim Wadhwa - Society Management",
-  description: "Society Management System for Asim Wadhwa Housing Society",
+
+  description:
+    "Society Management System for Asim Wadhwa Housing Society",
 
   manifest: "/manifest.json",
-
-  themeColor: "#2563eb",
 
   icons: {
     icon: [
@@ -31,6 +32,11 @@ export const metadata: Metadata = {
       },
     ],
   },
+};
+
+// Theme color is configured separately in Next.js viewport export.
+export const viewport: Viewport = {
+  themeColor: "#2563eb",
 };
 
 export default function RootLayout({

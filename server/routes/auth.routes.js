@@ -1,3 +1,4 @@
+
 const express = require('express');
 
 const router = express.Router();
@@ -40,15 +41,6 @@ router.get(
   authenticate,
   authorize('super_admin'),
   authController.checkManagerExists
-);
-
-// ============================================================
-// RESIDENT REGISTER
-// ============================================================
-
-router.post(
-  '/register',
-  authController.register
 );
 
 // ============================================================

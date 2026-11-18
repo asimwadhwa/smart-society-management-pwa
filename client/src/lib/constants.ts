@@ -1,5 +1,5 @@
-// Application Constants
 
+// Application Constants
 
 // ============================================================
 // Maintenance
@@ -10,7 +10,6 @@ export const MONTHLY_MAINTENANCE_AMOUNT = 1000; // ₹1000
 export const LATE_FEE_AMOUNT = 100; // ₹100
 
 export const LATE_FEE_DAYS = 18;
-
 
 // ============================================================
 // User Roles
@@ -23,7 +22,6 @@ export const ROLES = {
   WATCHMAN: 'watchman',
 } as const;
 
-
 // ============================================================
 // Maintenance Status
 // ============================================================
@@ -33,7 +31,6 @@ export const MAINTENANCE_STATUS = {
   PAID: 'paid',
   OVERDUE: 'overdue',
 } as const;
-
 
 // ============================================================
 // Complaint Status
@@ -45,7 +42,6 @@ export const COMPLAINT_STATUS = {
   RESOLVED: 'resolved',
 } as const;
 
-
 // ============================================================
 // Emergency Status
 // ============================================================
@@ -54,7 +50,6 @@ export const EMERGENCY_STATUS = {
   ACTIVE: 'active',
   RESOLVED: 'resolved',
 } as const;
-
 
 // ============================================================
 // Asset Types
@@ -66,7 +61,6 @@ export const ASSET_TYPES = {
   GENERATOR: 'generator',
 } as const;
 
-
 // ============================================================
 // Asset Status
 // ============================================================
@@ -74,26 +68,21 @@ export const ASSET_TYPES = {
 export const ASSET_STATUS = {
   WORKING: 'working',
   UNDER_MAINTENANCE: 'under_maintenance',
-  NOT_WORKING: 'not_workING',
+  NOT_WORKING: 'not_working',
 } as const;
-
 
 // ============================================================
 // Society Info
 // ============================================================
 
-// Society name is now dynamic.
+// Application tagline
 // Actual society name comes from logged-in user's society.
-// Do NOT hardcode any society name here.
 
-export const SOCIETY_TAGLINE = 'Society Management';
-
+export const SOCIETY_TAGLINE = 'Smart community living, made simpler.';
 
 // ============================================================
 // Flat Numbers
 // ============================================================
-
-// Flat numbers list (4 floors, 10 flats each)
 
 export const FLAT_NUMBERS = [
   '101', '102', '103', '104', '105',
@@ -108,7 +97,6 @@ export const FLAT_NUMBERS = [
   '401', '402', '403', '404', '405',
   '406', '407', '408', '409', '410',
 ];
-
 
 // ============================================================
 // Emergency Polling Interval

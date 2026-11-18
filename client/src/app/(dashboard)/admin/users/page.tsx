@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import Link from 'next/link';
 import api from '@/lib/api';
 
 import { Button } from '@/components/ui/button';
@@ -1066,6 +1067,21 @@ export default function AdminUsersPage() {
             Refresh
 
           </Button>
+
+
+          {isManager && (
+
+            <Link href="/register" className="w-full sm:w-auto">
+              <Button
+                size="sm"
+                className="w-full sm:w-auto"
+              >
+                <UserPlus className="w-4 h-4 mr-1" />
+                <span>Add Resident</span>
+              </Button>
+            </Link>
+
+          )}
 
 
           {isManager && (
