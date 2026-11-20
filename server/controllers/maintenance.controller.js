@@ -137,6 +137,29 @@ const getEffectiveMaintenanceSettings = async (society) => {
 
 
 // ============================================================
+// CALCULATE UNPAID BALANCE TO CARRY FORWARD
+// ============================================================
+
+const calculateCarryForward = async (societyId, userId, month, year) => {
+  const previousMonth = month === 1 ? 12 : month - 1;
+  const previousYear = month === 1 ? year - 1 : year;
+
+  const previousRecords = await Maintenance.find({
+    society_id: societyId,
+    user_id: userId,
+    month: previousMonth,
+    year: previousYear,
+    status: { $in: ['pending', 'overdue'] }
+  });
+
+  return previousRecords.reduce((total, record) => {
+    const billTotal = Number(record.total_amount || 0) ||
+      (Number(record.amount || 0) + Number(record.carry_forward || 0) + Number(record.late_fee || 0));
+    return total + billTotal;
+  }, 0);
+};
+
+// ============================================================
 // ENSURE DEFAULT SETTINGS
 // ============================================================
 
@@ -289,6 +312,17 @@ const createCurrentMonthMaintenance = async (
 
 
   // ==========================================================
+  // CARRY FORWARD PREVIOUS UNPAID MAINTENANCE
+  // ==========================================================
+
+  const carryForward = await calculateCarryForward(
+    society._id,
+    req.user._id,
+    month,
+    year
+  );
+
+  // ==========================================================
   // CREATE NEW RECORD
   // ==========================================================
 
@@ -308,6 +342,8 @@ const createCurrentMonthMaintenance = async (
         year,
 
         amount: settings.amount,
+
+        carry_forward: carryForward,
 
         late_fee: 0,
 
@@ -934,6 +970,16 @@ exports.getAllMaintenance = async (
     }
 
 
+    // Ensure the selected/current month has a bill for every eligible active user.
+    // For super-admin, generation runs only when a society is explicitly selected.
+    const generationSocietyId = filter.society_id;
+    if (generationSocietyId) {
+      const targetMonth = filter.month || (new Date().getMonth() + 1);
+      const targetYear = filter.year || new Date().getFullYear();
+      const { generateMaintenanceForMonth } = require('../jobs/maintenanceGenerator');
+      await generateMaintenanceForMonth(targetMonth, targetYear, generationSocietyId);
+    }
+
     const maintenance =
       await Maintenance.find(filter)
 
@@ -1124,6 +1170,15 @@ exports.getPaymentStats = async (
 
     }
 
+
+    // Keep statistics in sync with the All Payments list.
+    const generationSocietyId = filter.society_id;
+    if (generationSocietyId) {
+      const targetMonth = filter.month || (new Date().getMonth() + 1);
+      const targetYear = filter.year || new Date().getFullYear();
+      const { generateMaintenanceForMonth } = require('../jobs/maintenanceGenerator');
+      await generateMaintenanceForMonth(targetMonth, targetYear, generationSocietyId);
+    }
 
     const records =
       await Maintenance.find(
@@ -1977,12 +2032,9 @@ exports.updateMaintenance = async (
 
 
     maintenance.total_amount =
-      Number(
-        maintenance.amount || 0
-      ) +
-      Number(
-        maintenance.late_fee || 0
-      );
+      Number(maintenance.amount || 0) +
+      Number(maintenance.carry_forward || 0) +
+      Number(maintenance.late_fee || 0);
 
 
     await maintenance.save();
@@ -2670,6 +2722,13 @@ exports.generateMonthlyMaintenance = async (
 
       try {
 
+        const carryForward = await calculateCarryForward(
+          societyId,
+          user._id,
+          month,
+          year
+        );
+
         const maintenance =
           await Maintenance.create({
 
@@ -2688,6 +2747,9 @@ exports.generateMonthlyMaintenance = async (
 
             amount:
               settings.amount,
+
+            carry_forward:
+              carryForward,
 
             late_fee:
               0,
